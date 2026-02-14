@@ -1,0 +1,543 @@
+{
+  "nodes": {
+    "API-1": {
+      "id": "API-1",
+      "type": "task",
+      "name": "Design task management REST API",
+      "properties": {
+        "description": "Create RESTful endpoints for CRUD operations on tasks with validation and error handling",
+        "estimate": "3d",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "management",
+          "api",
+          "validation",
+          "restful",
+          "create",
+          "operations",
+          "endpoints",
+          "handling",
+          "design"
+        ],
+        "tech_category": "API",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "DB-1": {
+      "id": "DB-1",
+      "type": "task",
+      "name": "Design task storage schema",
+      "properties": {
+        "description": "Create database schema for tasks, status tracking, and performance metrics",
+        "estimate": "2d",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "status",
+          "schema",
+          "metrics",
+          "performance",
+          "tasks,",
+          "create",
+          "tracking,",
+          "storage",
+          "database",
+          "design"
+        ],
+        "tech_category": "DB",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "FE-1": {
+      "id": "FE-1",
+      "type": "task",
+      "name": "Create task management UI",
+      "properties": {
+        "description": "Build React component for task creation, editing, and status updates",
+        "estimate": "4d",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "component",
+          "updates",
+          "status",
+          "creation,",
+          "create",
+          "editing,",
+          "management"
+        ],
+        "tech_category": "FE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "FE-2": {
+      "id": "FE-2",
+      "type": "task",
+      "name": "Implement Calculation History View",
+      "properties": {
+        "description": "Create component to display persistent calculation history from knowledge graph",
+        "estimate": "2d",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "implement",
+          "component",
+          "persistent",
+          "create",
+          "calculation",
+          "history",
+          "display",
+          "knowledge"
+        ],
+        "tech_category": "FE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754930689.282453,
+      "updated_at": 1754930689.282453
+    },
+    "INT-1": {
+      "id": "INT-1",
+      "type": "task",
+      "name": "Implement monitoring system",
+      "properties": {
+        "description": "Set up task performance monitoring and alerting",
+        "estimate": "2d",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "monitoring",
+          "alerting",
+          "performance",
+          "implement",
+          "system"
+        ],
+        "tech_category": "INT",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "TEST-1": {
+      "id": "TEST-1",
+      "type": "task",
+      "name": "Implement unit test suite",
+      "properties": {
+        "description": "Create comprehensive unit tests for task-related functions and API endpoints",
+        "estimate": "3d",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "task-related",
+          "comprehensive",
+          "functions",
+          "api",
+          "implement",
+          "create",
+          "endpoints",
+          "test"
+        ],
+        "tech_category": "TEST",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "TEST-2": {
+      "id": "TEST-2",
+      "type": "task",
+      "name": "Create integration test suite",
+      "properties": {
+        "description": "Develop end-to-end tests for task workflow validation",
+        "estimate": "3d",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "integration",
+          "workflow",
+          "validation",
+          "create",
+          "end-to-end",
+          "test",
+          "develop"
+        ],
+        "tech_category": "TEST",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "DEPLOY-1": {
+      "id": "DEPLOY-1",
+      "type": "task",
+      "name": "Set up CI/CD pipeline",
+      "properties": {
+        "description": "Configure automated testing and deployment workflow",
+        "estimate": "2d",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "automated",
+          "pipeline",
+          "configure",
+          "deployment",
+          "workflow",
+          "testing"
+        ],
+        "tech_category": "DEPLOY",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "DOC-1": {
+      "id": "DOC-1",
+      "type": "task",
+      "name": "Create technical documentation",
+      "properties": {
+        "description": "Write API documentation and system architecture overview",
+        "estimate": "2d",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "documentation",
+          "technical",
+          "overview",
+          "api",
+          "create",
+          "architecture",
+          "system"
+        ],
+        "tech_category": "DOC",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_fe": {
+      "id": "component_fe",
+      "type": "component",
+      "name": "FE Component",
+      "properties": {
+        "category": "FE",
+        "related_tasks": [
+          "FE-1"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_test": {
+      "id": "component_test",
+      "type": "component",
+      "name": "TEST Component",
+      "properties": {
+        "category": "TEST",
+        "related_tasks": [
+          "TEST-1",
+          "TEST-2"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_db": {
+      "id": "component_db",
+      "type": "component",
+      "name": "DB Component",
+      "properties": {
+        "category": "DB",
+        "related_tasks": [
+          "DB-1"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_doc": {
+      "id": "component_doc",
+      "type": "component",
+      "name": "DOC Component",
+      "properties": {
+        "category": "DOC",
+        "related_tasks": [
+          "DOC-1"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_api": {
+      "id": "component_api",
+      "type": "component",
+      "name": "API Component",
+      "properties": {
+        "category": "API",
+        "related_tasks": [
+          "API-1"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_deploy": {
+      "id": "component_deploy",
+      "type": "component",
+      "name": "DEPLOY Component",
+      "properties": {
+        "category": "DEPLOY",
+        "related_tasks": [
+          "DEPLOY-1"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    },
+    "component_int": {
+      "id": "component_int",
+      "type": "component",
+      "name": "INT Component",
+      "properties": {
+        "category": "INT",
+        "related_tasks": [
+          "INT-1"
+        ]
+      },
+      "created_at": 1754934070.347701,
+      "updated_at": 1754934070.347701
+    }
+  },
+  "edges": {
+    "API-1_blocks_FE-1": {
+      "id": "API-1_blocks_FE-1",
+      "source_id": "API-1",
+      "target_id": "FE-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "DB-1_blocks_FE-2": {
+      "id": "DB-1_blocks_FE-2",
+      "source_id": "DB-1",
+      "target_id": "FE-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "FE-1_blocks_FE-2": {
+      "id": "FE-1_blocks_FE-2",
+      "source_id": "FE-1",
+      "target_id": "FE-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "API-1_blocks_INT-1": {
+      "id": "API-1_blocks_INT-1",
+      "source_id": "API-1",
+      "target_id": "INT-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "DB-1_blocks_INT-1": {
+      "id": "DB-1_blocks_INT-1",
+      "source_id": "DB-1",
+      "target_id": "INT-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "API-1_blocks_TEST-1": {
+      "id": "API-1_blocks_TEST-1",
+      "source_id": "API-1",
+      "target_id": "TEST-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "DB-1_blocks_TEST-1": {
+      "id": "DB-1_blocks_TEST-1",
+      "source_id": "DB-1",
+      "target_id": "TEST-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "INT-1_blocks_TEST-2": {
+      "id": "INT-1_blocks_TEST-2",
+      "source_id": "INT-1",
+      "target_id": "TEST-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "FE-2_blocks_TEST-2": {
+      "id": "FE-2_blocks_TEST-2",
+      "source_id": "FE-2",
+      "target_id": "TEST-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "API-1_blocks_DOC-1": {
+      "id": "API-1_blocks_DOC-1",
+      "source_id": "API-1",
+      "target_id": "DOC-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "DB-1_blocks_DOC-1": {
+      "id": "DB-1_blocks_DOC-1",
+      "source_id": "DB-1",
+      "target_id": "DOC-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_fe_encompasses_FE-1": {
+      "id": "component_fe_encompasses_FE-1",
+      "source_id": "component_fe",
+      "target_id": "FE-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_fe_encompasses_FE-2": {
+      "id": "component_fe_encompasses_FE-2",
+      "source_id": "component_fe",
+      "target_id": "FE-2",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754930689.282453
+    },
+    "component_test_encompasses_TEST-1": {
+      "id": "component_test_encompasses_TEST-1",
+      "source_id": "component_test",
+      "target_id": "TEST-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_test_encompasses_TEST-2": {
+      "id": "component_test_encompasses_TEST-2",
+      "source_id": "component_test",
+      "target_id": "TEST-2",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_db_encompasses_DB-1": {
+      "id": "component_db_encompasses_DB-1",
+      "source_id": "component_db",
+      "target_id": "DB-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_doc_encompasses_DOC-1": {
+      "id": "component_doc_encompasses_DOC-1",
+      "source_id": "component_doc",
+      "target_id": "DOC-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_api_encompasses_API-1": {
+      "id": "component_api_encompasses_API-1",
+      "source_id": "component_api",
+      "target_id": "API-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_deploy_encompasses_DEPLOY-1": {
+      "id": "component_deploy_encompasses_DEPLOY-1",
+      "source_id": "component_deploy",
+      "target_id": "DEPLOY-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "component_int_encompasses_INT-1": {
+      "id": "component_int_encompasses_INT-1",
+      "source_id": "component_int",
+      "target_id": "INT-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "FE-1_blocks_TEST-2": {
+      "id": "FE-1_blocks_TEST-2",
+      "source_id": "FE-1",
+      "target_id": "TEST-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "TEST-1_blocks_DEPLOY-1": {
+      "id": "TEST-1_blocks_DEPLOY-1",
+      "source_id": "TEST-1",
+      "target_id": "DEPLOY-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "TEST-2_blocks_DEPLOY-1": {
+      "id": "TEST-2_blocks_DEPLOY-1",
+      "source_id": "TEST-2",
+      "target_id": "DEPLOY-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    },
+    "DEPLOY-1_blocks_INT-1": {
+      "id": "DEPLOY-1_blocks_INT-1",
+      "source_id": "DEPLOY-1",
+      "target_id": "INT-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1754934070.347701
+    }
+  }
+}
