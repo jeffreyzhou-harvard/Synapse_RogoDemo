@@ -1,0 +1,14 @@
+{
+  "name": "midlayer-exp",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm --workspace apps/api run build",
+    "dev": "npm --workspace apps/api run dev"
+  },
+  "devDependencies": {}
+}
+

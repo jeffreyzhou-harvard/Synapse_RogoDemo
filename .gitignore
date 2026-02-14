@@ -1,0 +1,6 @@
+# Only exclude sensitive environment variables
+.env
+
+# IDE and OS files (optional)
+.DS_Store
+Thumbs.db
