@@ -377,6 +377,7 @@ const SynapsePage: React.FC = () => {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      const collectedEvents: { type: string; data: any }[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -390,154 +391,167 @@ const SynapsePage: React.FC = () => {
           if (!line.startsWith('data: ')) continue;
           try {
             const payload = JSON.parse(line.slice(6));
-            const { type, data } = payload;
-
-            // Process each event type
-            setClaims(prev => prev.map(c => {
-              if (c.id !== claimId) return c;
-              const v = { ...(c.verification || {
-                subclaims: [], evidence: [], provenanceNodes: [], provenanceEdges: [],
-                currentStep: '', stepLabel: '', completedSteps: [],
-              })};
-
-              switch (type) {
-                case 'step_start':
-                  v.currentStep = data.step;
-                  v.stepLabel = data.label;
-                  break;
-                case 'subclaim':
-                  v.subclaims = [...v.subclaims, { id: data.id, text: data.text, type: data.type }];
-                  break;
-                case 'evidence_found':
-                  v.evidence = [...v.evidence, {
-                    id: data.id, subclaim_id: data.subclaim_id, title: data.title,
-                    snippet: data.snippet, tier: data.tier, source: data.source,
-                    year: data.year, citations: data.citations,
-                  }];
-                  break;
-                case 'evidence_scored':
-                  v.evidence = v.evidence.map(e => e.id === data.id ? {
-                    ...e, quality_score: data.quality_score, study_type: data.study_type,
-                    supports_claim: data.supports_claim, assessment: data.assessment,
-                  } : e);
-                  break;
-                case 'subclaim_verdict':
-                  v.subclaims = v.subclaims.map(sc => sc.id === data.subclaim_id ? {
-                    ...sc, verdict: data.verdict, confidence: data.confidence, summary: data.summary,
-                  } : sc);
-                  break;
-                case 'overall_verdict':
-                  v.overallVerdict = { verdict: data.verdict, confidence: data.confidence, summary: data.summary, detail: data.detail };
-                  break;
-                case 'provenance_node':
-                  v.provenanceNodes = [...v.provenanceNodes, data as ProvenanceNode];
-                  break;
-                case 'provenance_edge':
-                  v.provenanceEdges = [...v.provenanceEdges, data as ProvenanceEdge];
-                  break;
-                case 'provenance_complete':
-                  v.provenanceAnalysis = data.analysis;
-                  break;
-                case 'corrected_claim':
-                  v.correctedClaim = data as CorrectedClaim;
-                  break;
-                case 'step_complete':
-                  v.completedSteps = [...v.completedSteps, data.step];
-                  v.totalDurationMs = data.duration_ms || data.total_duration_ms;
-                  if (data.total_sources) v.totalSources = data.total_sources;
-                  break;
-                case 'verification_complete':
-                  v.totalDurationMs = data.total_duration_ms;
-                  v.totalSources = data.total_sources;
-                  break;
-              }
-
-              return { ...c, verification: v as VerificationState };
-            }));
-
-            // --- Agent chip state transitions ---
-            switch (type) {
-              case 'step_start': {
-                const chipMap: Record<string, string> = {
-                  decomposition: 'decompose', evaluation: 'evaluate',
-                  synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
-                };
-                const chipId = chipMap[data.step];
-                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'Sonar' : 'Claude'); }
-                if (data.step === 'evidence_retrieval') {
-                  // Activate all search chips simultaneously
-                  activateChip('sscholar'); activateChip('sonar_web'); activateChip('sonar_counter');
-                  bumpApiCalls('Semantic Scholar'); bumpApiCalls('Sonar'); bumpApiCalls('Sonar');
-                }
-                break;
-              }
-              case 'step_complete': {
-                const completeMap: Record<string, string[]> = {
-                  decomposition: ['decompose'], evaluation: ['evaluate'],
-                  synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
-                  evidence_retrieval: ['sscholar', 'sonar_web', 'sonar_counter'],
-                };
-                (completeMap[data.step] || []).forEach(id => completeChip(id));
-                if (data.total_sources) setPipelineStats(prev => ({ ...prev, sources: data.total_sources }));
-                break;
-              }
-              case 'evidence_found':
-                bumpApiCalls(data.tier === 'academic' ? 'Semantic Scholar' : 'Sonar');
-                setPipelineStats(prev => ({ ...prev, sources: prev.sources + 1 }));
-                break;
-              case 'verification_complete':
-                setPipelineStats(prev => ({ ...prev, durationMs: data.total_duration_ms, sources: data.total_sources || prev.sources }));
-                break;
-            }
-
-            // --- Add to trace with API badges ---
-            switch (type) {
-              case 'step_start': {
-                const badgeMap: Record<string, string> = {
-                  decomposition: 'claude', evaluation: 'claude',
-                  synthesis: 'claude', correction: 'claude', provenance: 'sonar',
-                  evidence_retrieval: 'sscholar',
-                };
-                addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, badgeMap[data.step]);
-                break;
-              }
-              case 'subclaim':
-                addTrace(`Sub-claim: "${data.text}"`, 'info', 1);
-                break;
-              case 'search_start':
-                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'sscholar');
-                break;
-              case 'evidence_found': {
-                const evBadge = data.tier === 'academic' ? 'sscholar' : data.tier === 'counter' ? 'sonar' : 'sonar';
-                addTrace(`Found: ${data.title?.slice(0, 50)} [${data.tier}]`, 'info', 2, evBadge);
-                break;
-              }
-              case 'evidence_scored':
-                addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2, 'claude');
-                break;
-              case 'subclaim_verdict': {
-                const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : data.verdict === 'exaggerated' ? '⚠️' : '🔶';
-                addTrace(`${icon} "${data.text?.slice(0, 50)}..." → ${data.verdict} (${data.confidence})`, 'verdict', 0, 'claude');
-                break;
-              }
-              case 'overall_verdict': {
-                const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : '⚠️';
-                addTrace(`${icon} OVERALL: ${data.verdict.toUpperCase()} (${data.confidence})`, 'verdict', 0, 'claude');
-                addTrace(data.summary, 'info', 1);
-                break;
-              }
-              case 'provenance_node':
-                addTrace(`${data.source_type}: "${data.text?.slice(0, 60)}..." (${data.date || '?'})`, 'info', 1, 'sonar');
-                break;
-              case 'corrected_claim':
-                addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1, 'claude');
-                break;
-              case 'verification_complete':
-                addTrace(`Done in ${(data.total_duration_ms / 1000).toFixed(1)}s — ${data.total_sources} sources`, 'success');
-                break;
-            }
-          } catch { /* skip malformed events */ }
+            collectedEvents.push(payload);
+          } catch { /* skip malformed */ }
         }
+      }
+
+      // Replay events with staggered delays for live animation
+      const processEvent = (type: string, data: any) => {
+        // Update verification state
+        setClaims(prev => prev.map(c => {
+          if (c.id !== claimId) return c;
+          const v = { ...(c.verification || {
+            subclaims: [], evidence: [], provenanceNodes: [], provenanceEdges: [],
+            currentStep: '', stepLabel: '', completedSteps: [],
+          })};
+
+          switch (type) {
+            case 'step_start':
+              v.currentStep = data.step;
+              v.stepLabel = data.label;
+              break;
+            case 'subclaim':
+              v.subclaims = [...v.subclaims, { id: data.id, text: data.text, type: data.type }];
+              break;
+            case 'evidence_found':
+              v.evidence = [...v.evidence, {
+                id: data.id, subclaim_id: data.subclaim_id, title: data.title,
+                snippet: data.snippet, tier: data.tier, source: data.source,
+                year: data.year, citations: data.citations,
+              }];
+              break;
+            case 'evidence_scored':
+              v.evidence = v.evidence.map(e => e.id === data.id ? {
+                ...e, quality_score: data.quality_score, study_type: data.study_type,
+                supports_claim: data.supports_claim, assessment: data.assessment,
+              } : e);
+              break;
+            case 'subclaim_verdict':
+              v.subclaims = v.subclaims.map(sc => sc.id === data.subclaim_id ? {
+                ...sc, verdict: data.verdict, confidence: data.confidence, summary: data.summary,
+              } : sc);
+              break;
+            case 'overall_verdict':
+              v.overallVerdict = { verdict: data.verdict, confidence: data.confidence, summary: data.summary, detail: data.detail };
+              break;
+            case 'provenance_node':
+              v.provenanceNodes = [...v.provenanceNodes, data as ProvenanceNode];
+              break;
+            case 'provenance_edge':
+              v.provenanceEdges = [...v.provenanceEdges, data as ProvenanceEdge];
+              break;
+            case 'provenance_complete':
+              v.provenanceAnalysis = data.analysis;
+              break;
+            case 'corrected_claim':
+              v.correctedClaim = data as CorrectedClaim;
+              break;
+            case 'step_complete':
+              v.completedSteps = [...v.completedSteps, data.step];
+              v.totalDurationMs = data.duration_ms || data.total_duration_ms;
+              if (data.total_sources) v.totalSources = data.total_sources;
+              break;
+            case 'verification_complete':
+              v.totalDurationMs = data.total_duration_ms;
+              v.totalSources = data.total_sources;
+              break;
+          }
+
+          return { ...c, verification: v as VerificationState };
+        }));
+
+        // Agent chip state transitions
+        switch (type) {
+          case 'step_start': {
+            const chipMap: Record<string, string> = {
+              decomposition: 'decompose', evaluation: 'evaluate',
+              synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
+            };
+            const chipId = chipMap[data.step];
+            if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'Sonar' : 'Claude'); }
+            if (data.step === 'evidence_retrieval') {
+              activateChip('sscholar'); activateChip('sonar_web'); activateChip('sonar_counter');
+              bumpApiCalls('Semantic Scholar'); bumpApiCalls('Sonar'); bumpApiCalls('Sonar');
+            }
+            break;
+          }
+          case 'step_complete': {
+            const completeMap: Record<string, string[]> = {
+              decomposition: ['decompose'], evaluation: ['evaluate'],
+              synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
+              evidence_retrieval: ['sscholar', 'sonar_web', 'sonar_counter'],
+            };
+            (completeMap[data.step] || []).forEach(id => completeChip(id));
+            if (data.total_sources) setPipelineStats(prev => ({ ...prev, sources: data.total_sources }));
+            break;
+          }
+          case 'evidence_found':
+            bumpApiCalls(data.tier === 'academic' ? 'Semantic Scholar' : 'Sonar');
+            setPipelineStats(prev => ({ ...prev, sources: prev.sources + 1 }));
+            break;
+          case 'verification_complete':
+            setPipelineStats(prev => ({ ...prev, durationMs: data.total_duration_ms, sources: data.total_sources || prev.sources }));
+            break;
+        }
+
+        // Trace log
+        switch (type) {
+          case 'step_start': {
+            const badgeMap: Record<string, string> = {
+              decomposition: 'claude', evaluation: 'claude',
+              synthesis: 'claude', correction: 'claude', provenance: 'sonar',
+              evidence_retrieval: 'sscholar',
+            };
+            addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, badgeMap[data.step]);
+            break;
+          }
+          case 'subclaim':
+            addTrace(`Sub-claim: "${data.text}"`, 'info', 1);
+            break;
+          case 'search_start':
+            addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'sscholar');
+            break;
+          case 'evidence_found': {
+            const evBadge = data.tier === 'academic' ? 'sscholar' : data.tier === 'counter' ? 'sonar' : 'sonar';
+            addTrace(`Found: ${data.title?.slice(0, 50)} [${data.tier}]`, 'info', 2, evBadge);
+            break;
+          }
+          case 'evidence_scored':
+            addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2, 'claude');
+            break;
+          case 'subclaim_verdict': {
+            const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : data.verdict === 'exaggerated' ? '⚠️' : '🔶';
+            addTrace(`${icon} "${data.text?.slice(0, 50)}..." → ${data.verdict} (${data.confidence})`, 'verdict', 0, 'claude');
+            break;
+          }
+          case 'overall_verdict': {
+            const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : '⚠️';
+            addTrace(`${icon} OVERALL: ${data.verdict.toUpperCase()} (${data.confidence})`, 'verdict', 0, 'claude');
+            addTrace(data.summary, 'info', 1);
+            break;
+          }
+          case 'provenance_node':
+            addTrace(`${data.source_type}: "${data.text?.slice(0, 60)}..." (${data.date || '?'})`, 'info', 1, 'sonar');
+            break;
+          case 'corrected_claim':
+            addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1, 'claude');
+            break;
+          case 'verification_complete':
+            addTrace(`Done in ${(data.total_duration_ms / 1000).toFixed(1)}s — ${data.total_sources} sources`, 'success');
+            break;
+        }
+      };
+
+      // Stagger event replay: step_start events get longer delays, detail events get shorter delays
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      for (const evt of collectedEvents) {
+        const { type, data } = evt;
+        const ms = type === 'step_start' ? 600 : type === 'step_complete' ? 300 :
+                   type === 'subclaim_verdict' || type === 'overall_verdict' ? 400 :
+                   type === 'verification_complete' ? 100 : 150;
+        await delay(ms);
+        processEvent(type, data);
       }
 
       // Mark claim as done

@@ -695,159 +695,73 @@ Return ONLY valid JSON:
 # ---------------------------------------------------------------------------
 
 def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, None, None]:
-    """Run the full 6-step verification pipeline, yielding events for SSE streaming.
-    Uses a FAST path: 1 Semantic Scholar + 1 Perplexity + 1 mega-LLM call."""
+    """Run the full 6-step verification pipeline, yielding events for SSE streaming."""
 
     t0 = time.time()
 
-    # --- Step 1: Gather evidence in parallel (2 API calls) ---
-    yield VerificationEvent("step_start", {"step": "decomposition", "label": "Analyzing claim..."})
+    # --- Step 1: Decomposition ---
+    yield VerificationEvent("step_start", {"step": "decomposition", "label": "Decomposing claim..."})
+    subclaims = decompose_claim(claim_text)
+    for sc in subclaims:
+        yield VerificationEvent("subclaim", {"id": sc["id"], "text": sc["text"], "type": sc["type"]})
+    yield VerificationEvent("step_complete", {"step": "decomposition", "count": len(subclaims), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # Fetch evidence concurrently-ish (sequential but only 2 calls)
-    papers = search_semantic_scholar(claim_text, limit=5)
-    sonar = search_perplexity(
-        f"Fact-check this claim with evidence for AND against: {claim_text}",
-        focus="peer-reviewed sources, .gov, .edu, WHO, NIH, counter-evidence"
-    )
+    # --- Step 2: Evidence Retrieval (per sub-claim) ---
+    all_evidence: List[Dict] = []
+    yield VerificationEvent("step_start", {"step": "evidence_retrieval", "label": "Searching for evidence..."})
 
-    # Build evidence context for the LLM
-    evidence_parts = []
-    all_evidence = []
-    eid = 0
-    for p in papers:
-        eid += 1
-        authors = ", ".join([a.get("name", "") for a in (p.get("authors") or [])[:3]])
-        ev = {
-            "id": f"ev-{eid}",
-            "title": p.get("title", ""),
-            "snippet": (p.get("abstract") or "")[:300],
-            "source": p.get("url") or "Semantic Scholar",
-            "tier": "academic",
-            "year": p.get("year"),
-            "citations": p.get("citationCount", 0),
-            "authors": authors,
-        }
-        all_evidence.append(ev)
-        evidence_parts.append(f"[{ev['id']}] ACADEMIC | {ev['title']} ({ev.get('year','?')}, {ev.get('citations',0)} cites) | {ev['snippet'][:200]}")
+    for sc in subclaims:
+        yield VerificationEvent("search_start", {"subclaim_id": sc["id"], "subclaim": sc["text"]})
+        evidence = retrieve_evidence(sc["text"], claim_text)
+        for ev in evidence:
+            ev["subclaim_id"] = sc["id"]
+            yield VerificationEvent("evidence_found", {
+                "subclaim_id": sc["id"],
+                "id": ev["id"],
+                "title": ev.get("title", ""),
+                "snippet": ev.get("snippet", "")[:200],
+                "tier": ev.get("tier", ""),
+                "source": ev.get("source", ""),
+                "year": ev.get("year"),
+                "citations": ev.get("citations"),
+            })
+        all_evidence.extend(evidence)
+        yield VerificationEvent("search_complete", {"subclaim_id": sc["id"], "count": len(evidence)})
 
-    if sonar.get("text"):
-        eid += 1
-        ev = {
-            "id": f"ev-{eid}",
-            "title": "Web Evidence (Perplexity Sonar)",
-            "snippet": sonar["text"][:500],
-            "source": "Perplexity Sonar",
-            "tier": "institutional",
-            "citations_urls": sonar.get("citations", []),
-        }
-        all_evidence.append(ev)
-        evidence_parts.append(f"[{ev['id']}] WEB/INSTITUTIONAL | {ev['snippet'][:300]}")
-
-    evidence_block = "\n".join(evidence_parts) if evidence_parts else "(No external evidence found)"
-
-    yield VerificationEvent("step_complete", {"step": "decomposition", "count": len(all_evidence), "duration_ms": int((time.time() - t0) * 1000)})
-
-    # Emit evidence found events
-    yield VerificationEvent("step_start", {"step": "evidence_retrieval", "label": "Evidence gathered"})
-    for ev in all_evidence:
-        yield VerificationEvent("evidence_found", {
-            "subclaim_id": "main",
-            "id": ev["id"],
-            "title": ev.get("title", ""),
-            "snippet": ev.get("snippet", "")[:200],
-            "tier": ev.get("tier", ""),
-            "source": ev.get("source", ""),
-            "year": ev.get("year"),
-            "citations": ev.get("citations"),
-        })
     yield VerificationEvent("step_complete", {"step": "evidence_retrieval", "total_sources": len(all_evidence), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Step 2: Single mega-LLM call for everything ---
-    yield VerificationEvent("step_start", {"step": "evaluation", "label": "Analyzing evidence & synthesizing verdict..."})
-
-    mega_prompt = f"""You are a rigorous fact-checking AI. Analyze this claim against the evidence and produce a COMPLETE verification report.
-
-CLAIM: "{claim_text}"
-
-EVIDENCE:
-{evidence_block}
-
-Produce ALL of the following in a single JSON response:
-
-1. **subclaims**: Break the claim into 2-4 atomic sub-claims
-2. **evidence_evaluation**: Score each evidence source
-3. **subclaim_verdicts**: Verdict for each sub-claim
-4. **overall_verdict**: Overall verdict for the full claim
-5. **provenance**: How this claim likely originated and mutated
-6. **correction**: Corrected version of the claim
-
-Return ONLY this JSON:
-{{
-  "subclaims": [
-    {{"id": "sub-1", "text": "atomic sub-claim", "type": "quantitative|directional|categorical|provenance"}}
-  ],
-  "evidence_evaluation": [
-    {{"id": "ev-1", "quality_score": 85, "study_type": "RCT|meta-analysis|cohort|expert_opinion|news_report", "supports_claim": true, "assessment": "one sentence"}}
-  ],
-  "subclaim_verdicts": [
-    {{"subclaim_id": "sub-1", "text": "the sub-claim", "verdict": "supported|partially_supported|exaggerated|contradicted|unsupported", "confidence": "high|medium|low", "summary": "2-3 sentences"}}
-  ],
-  "overall_verdict": {{
-    "verdict": "supported|partially_supported|exaggerated|contradicted|unsupported",
-    "confidence": "high|medium|low",
-    "summary": "2-3 sentences",
-    "detail": "longer explanation"
-  }},
-  "provenance": {{
-    "nodes": [
-      {{"id": "prov-1", "source_type": "study|journalist|podcast|social|claim", "source_name": "Name", "text": "claim at this stage", "date": "YYYY", "mutation_severity": "none|slight|significant|severe"}}
-    ],
-    "edges": [{{"from": "prov-1", "to": "prov-2"}}],
-    "analysis": "How the claim mutated"
-  }},
-  "correction": {{
-    "corrected": "evidence-based corrected claim",
-    "steelmanned": "strongest honest version",
-    "one_sentence": "one sentence summary",
-    "caveats": ["caveat 1", "caveat 2"]
-  }}
-}}"""
-
-    raw = _call_llm(mega_prompt, "You are a world-class fact-checking AI. Be thorough, precise, and evidence-based.", max_tokens=6000)
-    result = _parse_json_from_llm(raw)
-
-    if not isinstance(result, dict):
-        result = {}
-
+    # --- Step 3: Evidence Quality Evaluation ---
+    yield VerificationEvent("step_start", {"step": "evaluation", "label": "Evaluating evidence quality..."})
+    all_evidence = evaluate_evidence(all_evidence, claim_text)
+    for ev in all_evidence:
+        yield VerificationEvent("evidence_scored", {
+            "id": ev["id"],
+            "quality_score": ev.get("quality_score"),
+            "study_type": ev.get("study_type"),
+            "supports_claim": ev.get("supports_claim"),
+            "assessment": ev.get("assessment", ""),
+        })
     yield VerificationEvent("step_complete", {"step": "evaluation", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Emit subclaims ---
-    subclaims = result.get("subclaims", [{"id": "sub-1", "text": claim_text, "type": "categorical"}])
+    # --- Step 4: Verdict Synthesis (per sub-claim, then overall) ---
+    yield VerificationEvent("step_start", {"step": "synthesis", "label": "Synthesizing verdicts..."})
+
+    subclaim_verdicts = []
     for sc in subclaims:
-        yield VerificationEvent("subclaim", {"id": sc.get("id", "sub-1"), "text": sc.get("text", ""), "type": sc.get("type", "categorical")})
-
-    # --- Emit evidence scores ---
-    for ev_score in result.get("evidence_evaluation", []):
-        yield VerificationEvent("evidence_scored", {
-            "id": ev_score.get("id", ""),
-            "quality_score": ev_score.get("quality_score"),
-            "study_type": ev_score.get("study_type"),
-            "supports_claim": ev_score.get("supports_claim"),
-            "assessment": ev_score.get("assessment", ""),
-        })
-
-    # --- Emit subclaim verdicts ---
-    yield VerificationEvent("step_start", {"step": "synthesis", "label": "Verdicts ready"})
-    for sv in result.get("subclaim_verdicts", []):
+        sc_evidence = [e for e in all_evidence if e.get("subclaim_id") == sc["id"]]
+        verdict = synthesize_verdict(sc["text"], sc_evidence)
+        verdict["text"] = sc["text"]
+        verdict["subclaim_id"] = sc["id"]
+        subclaim_verdicts.append(verdict)
         yield VerificationEvent("subclaim_verdict", {
-            "subclaim_id": sv.get("subclaim_id", "sub-1"),
-            "text": sv.get("text", ""),
-            "verdict": sv.get("verdict", "unsupported"),
-            "confidence": sv.get("confidence", "low"),
-            "summary": sv.get("summary", ""),
+            "subclaim_id": sc["id"],
+            "text": sc["text"],
+            "verdict": verdict.get("verdict", "unsupported"),
+            "confidence": verdict.get("confidence", "low"),
+            "summary": verdict.get("summary", ""),
         })
 
-    overall = result.get("overall_verdict", {"verdict": "unsupported", "confidence": "low", "summary": "Could not verify."})
+    overall = synthesize_overall_verdict(claim_text, subclaim_verdicts)
     yield VerificationEvent("overall_verdict", {
         "verdict": overall.get("verdict", "unsupported"),
         "confidence": overall.get("confidence", "low"),
@@ -856,9 +770,9 @@ Return ONLY this JSON:
     })
     yield VerificationEvent("step_complete", {"step": "synthesis", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Emit provenance ---
-    yield VerificationEvent("step_start", {"step": "provenance", "label": "Provenance traced"})
-    provenance = result.get("provenance", {"nodes": [], "edges": [], "analysis": ""})
+    # --- Step 5: Provenance Tracing ---
+    yield VerificationEvent("step_start", {"step": "provenance", "label": "Tracing claim origins..."})
+    provenance = trace_provenance(claim_text, all_evidence)
     for node in provenance.get("nodes", []):
         yield VerificationEvent("provenance_node", node)
     for edge in provenance.get("edges", []):
@@ -866,9 +780,9 @@ Return ONLY this JSON:
     yield VerificationEvent("provenance_complete", {"analysis": provenance.get("analysis", ""), "duration_ms": int((time.time() - t0) * 1000)})
     yield VerificationEvent("step_complete", {"step": "provenance", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Emit correction ---
-    yield VerificationEvent("step_start", {"step": "correction", "label": "Correction generated"})
-    corrected = result.get("correction", {"corrected": claim_text, "steelmanned": claim_text, "one_sentence": "", "caveats": []})
+    # --- Step 6: Corrected Claim ---
+    yield VerificationEvent("step_start", {"step": "correction", "label": "Generating corrected claim..."})
+    corrected = generate_corrected_claim(claim_text, overall, all_evidence)
     yield VerificationEvent("corrected_claim", {
         "original": claim_text,
         "corrected": corrected.get("corrected", ""),
