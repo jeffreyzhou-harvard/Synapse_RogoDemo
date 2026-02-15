@@ -73,12 +73,16 @@ _reports_store = {}
 @app.get("/api/health")
 def health():
     import os
+    akey = os.getenv("ANTHROPIC_API_KEY", "")
+    pkey = os.getenv("PERPLEXITY_API_KEY", "")
     return {
         "status": "ok",
         "service": "synapse",
-        "has_anthropic_key": bool(os.getenv("ANTHROPIC_API_KEY")),
-        "has_perplexity_key": bool(os.getenv("PERPLEXITY_API_KEY")),
+        "anthropic_key_len": len(akey),
+        "anthropic_key_preview": f"{akey[:8]}...{akey[-4:]}" if len(akey) > 12 else "(too short or missing)",
+        "perplexity_key_len": len(pkey),
         "default_model": os.getenv("DEFAULT_MODEL", "(not set)"),
+        "env_keys": [k for k in os.environ.keys() if "KEY" in k or "MODEL" in k or "ANTHROPIC" in k],
     }
 
 @app.get("/api/test-llm")
