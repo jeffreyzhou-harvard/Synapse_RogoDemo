@@ -815,7 +815,7 @@ const SynapsePage: React.FC = () => {
             }}>New Analysis</button>
         </div>
         {/* Action bar — shown when all claims verified */}
-        {doneClaims > 0 && !claims.some(c => c.status === 'pending' || c.status === 'verifying') && (
+        {doneClaims > 0 && (
           <div style={{
             padding: '8px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
             display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#050505',
@@ -889,7 +889,7 @@ const SynapsePage: React.FC = () => {
                 Verify All
               </button>
             )}
-            {claims.length > 0 && doneClaims > 0 && !claims.some(c => c.status === 'pending' || c.status === 'verifying') && (
+            {claims.length > 0 && doneClaims > 0 && (
               <button onClick={shareReport}
                 style={{
                   padding: '3px 10px', borderRadius: '5px', border: '1px solid #ffffff',
