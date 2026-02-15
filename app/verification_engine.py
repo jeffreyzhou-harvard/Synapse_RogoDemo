@@ -124,7 +124,7 @@ def _call_llm(prompt: str, system: str = "", max_tokens: int = 4000) -> str:
     if client:
         try:
             resp = client.messages.create(
-                model=os.getenv("DEFAULT_MODEL", "claude-3-5-sonnet-20241022"),
+                model=os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514"),
                 max_tokens=max_tokens,
                 temperature=0.3,
                 system=system or "You are a precise fact-checking AI.",
