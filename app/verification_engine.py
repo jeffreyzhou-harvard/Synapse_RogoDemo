@@ -293,38 +293,86 @@ def _is_tweet_url(url: str) -> bool:
     """Check if URL is a Twitter/X tweet."""
     return bool(re.match(r'https?://(twitter\.com|x\.com)/\w+/status/\d+', url))
 
+def _extract_tweet_id(url: str) -> Optional[str]:
+    """Extract tweet ID from a Twitter/X URL."""
+    m = re.search(r'/status/(\d+)', url)
+    return m.group(1) if m else None
+
 def _extract_tweet(url: str) -> Dict[str, str]:
-    """Extract tweet content via Sonar (X blocks direct scraping)."""
-    api_key = os.getenv("PERPLEXITY_API_KEY")
-    if not api_key:
-        return {"title": url, "text": "", "url": url, "source_type": "tweet", "error": "No Perplexity key"}
-    try:
-        print(f"[Tweet Extract] Fetching tweet via Sonar: {url}")
-        resp = httpx.post(
-            "https://api.perplexity.ai/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "sonar",
-                "messages": [
-                    {"role": "system", "content": "You are a tweet extraction assistant. Given a tweet URL, reproduce the EXACT tweet text, the author's name, their handle (@username), and the date if visible. Format:\n\nAuthor: [name]\nHandle: [@handle]\nDate: [date or 'unknown']\n\nTweet:\n[exact tweet text]\n\nThread (if any):\n[additional tweets in thread]"},
-                    {"role": "user", "content": f"Extract the full content of this tweet:\n{url}"},
-                ],
-            },
-            timeout=30,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if text and len(text.split()) > 5:
-                # Parse author/handle from response
-                author_match = re.search(r'Author:\s*(.+)', text)
-                handle_match = re.search(r'Handle:\s*(@\w+)', text)
-                author = author_match.group(1).strip() if author_match else "Unknown"
-                handle = handle_match.group(1).strip() if handle_match else ""
+    """Extract tweet content via X API v2 (Bearer Token). Falls back to Sonar."""
+    tweet_id = _extract_tweet_id(url)
+    bearer = os.getenv("X_BEARER_TOKEN")
+
+    # Try X API v2 first
+    if tweet_id and bearer:
+        try:
+            print(f"[Tweet Extract] Fetching tweet {tweet_id} via X API v2")
+            resp = httpx.get(
+                f"https://api.x.com/2/tweets/{tweet_id}",
+                params={
+                    "tweet.fields": "author_id,created_at,text,public_metrics,context_annotations",
+                    "expansions": "author_id",
+                    "user.fields": "name,username",
+                },
+                headers={"Authorization": f"Bearer {bearer}"},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                tweet_data = data.get("data", {})
+                tweet_text = tweet_data.get("text", "")
+                created_at = tweet_data.get("created_at", "")
+
+                # Get author info from includes
+                users = data.get("includes", {}).get("users", [])
+                author = users[0].get("name", "Unknown") if users else "Unknown"
+                handle = f"@{users[0].get('username', '')}" if users else ""
+
+                # Get metrics
+                metrics = tweet_data.get("public_metrics", {})
+                likes = metrics.get("like_count", 0)
+                retweets = metrics.get("retweet_count", 0)
+                replies = metrics.get("reply_count", 0)
+
                 title = f"Tweet by {author} {handle}".strip()
-                return {"title": title, "text": text, "url": url, "source_type": "tweet", "author": author, "handle": handle}
-    except Exception as e:
-        print(f"[Tweet Extract] Error: {e}")
+                full_text = f"Author: {author}\nHandle: {handle}\nDate: {created_at}\nLikes: {likes} · Retweets: {retweets} · Replies: {replies}\n\nTweet:\n{tweet_text}"
+
+                return {"title": title, "text": full_text, "url": url, "source_type": "tweet", "author": author, "handle": handle}
+            else:
+                print(f"[Tweet Extract] X API returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"[Tweet Extract] X API error: {e}")
+
+    # Fallback to Sonar
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if api_key:
+        try:
+            print(f"[Tweet Extract] Falling back to Sonar for {url}")
+            resp = httpx.post(
+                "https://api.perplexity.ai/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "sonar",
+                    "messages": [
+                        {"role": "system", "content": "You are a tweet extraction assistant. Given a tweet URL, reproduce the EXACT tweet text, the author's name, their handle (@username), and the date if visible. Format:\n\nAuthor: [name]\nHandle: [@handle]\nDate: [date or 'unknown']\n\nTweet:\n[exact tweet text]"},
+                        {"role": "user", "content": f"Extract the full content of this tweet:\n{url}"},
+                    ],
+                },
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if text and len(text.split()) > 5:
+                    author_match = re.search(r'Author:\s*(.+)', text)
+                    handle_match = re.search(r'Handle:\s*(@\w+)', text)
+                    author = author_match.group(1).strip() if author_match else "Unknown"
+                    handle = handle_match.group(1).strip() if handle_match else ""
+                    title = f"Tweet by {author} {handle}".strip()
+                    return {"title": title, "text": text, "url": url, "source_type": "tweet", "author": author, "handle": handle}
+        except Exception as e:
+            print(f"[Tweet Extract] Sonar fallback error: {e}")
+
     return {"title": url, "text": "", "url": url, "source_type": "tweet", "error": "Failed to extract tweet"}
 
 def extract_url_content(url: str) -> Dict[str, str]:
