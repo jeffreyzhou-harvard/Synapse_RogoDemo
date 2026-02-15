@@ -4111,6 +4111,45 @@ from app.verification_engine import (
 )
 
 
+import uuid as _uuid
+
+# In-memory report store (hackathon — no DB needed)
+_reports_store: Dict[str, dict] = {}
+
+
+class SaveReportRequest(BaseModel):
+    title: str
+    url: Optional[str] = None
+    source_type: str = "url"
+    claims: list  # full claim objects with verification data
+    analyzed_at: Optional[str] = None
+
+
+@app.post("/api/reports")
+def api_save_report(req: SaveReportRequest):
+    """Save a verification report and return a unique shareable ID."""
+    report_id = str(_uuid.uuid4())[:8]
+    _reports_store[report_id] = {
+        "id": report_id,
+        "title": req.title,
+        "url": req.url,
+        "source_type": req.source_type,
+        "claims": req.claims,
+        "analyzed_at": req.analyzed_at or "",
+        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+    }
+    return {"id": report_id}
+
+
+@app.get("/api/reports/{report_id}")
+def api_get_report(report_id: str):
+    """Retrieve a saved verification report by ID."""
+    report = _reports_store.get(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+
 class IngestRequest(BaseModel):
     url: Optional[str] = None
     text: Optional[str] = None

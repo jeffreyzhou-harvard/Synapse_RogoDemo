@@ -158,6 +158,10 @@ const SynapsePage: React.FC = () => {
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
 
+  // Share state
+  const [shareToast, setShareToast] = useState('');
+  const [reportId, setReportId] = useState<string | null>(null);
+
   // Agent orchestration state (per-claim)
   const [agentChips, setAgentChips] = useState<AgentChip[]>([]);
   const [pipelineStats, setPipelineStats] = useState({ steps: 0, apiCalls: 0, services: new Set<string>(), sources: 0, durationMs: 0 });
@@ -197,6 +201,51 @@ const SynapsePage: React.FC = () => {
       return { ...prev, apiCalls: prev.apiCalls + 1, services: s };
     });
   }, []);
+
+  // ─── Share Report ───────────────────────────────────────────────────
+
+  const shareReport = useCallback(async () => {
+    const doneClaims = claims.filter(c => c.status === 'done');
+    if (doneClaims.length === 0) return;
+    try {
+      const resp = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: ingestedTitle || 'Verification Report',
+          url: inputValue.startsWith('http') ? inputValue : undefined,
+          source_type: sourceType || 'text',
+          claims: claims.map(c => ({
+            id: c.id, original: c.original, normalized: c.normalized,
+            type: c.type, status: c.status, verification: c.verification,
+          })),
+          analyzed_at: new Date().toISOString(),
+        }),
+      });
+      if (resp.ok) {
+        const { id } = await resp.json();
+        setReportId(id);
+        const url = `${window.location.origin}/report/${id}`;
+        await navigator.clipboard.writeText(url);
+        setShareToast('Report link copied!');
+        setTimeout(() => setShareToast(''), 3000);
+      }
+    } catch (e) {
+      setShareToast('Failed to save report');
+      setTimeout(() => setShareToast(''), 3000);
+    }
+  }, [claims, ingestedTitle, inputValue, sourceType]);
+
+  // ─── Preloaded Examples ────────────────────────────────────────────
+
+  const PRELOADED_EXAMPLES = [
+    { icon: '🏥', claim: 'Intermittent fasting reduces inflammation by 40%', verdict: 'exaggerated', source: 'Health Blog' },
+    { icon: '🤖', claim: 'AI will replace 80% of jobs by 2030', verdict: 'unsupported', source: 'Tech Article' },
+    { icon: '🌍', claim: 'Sea levels will rise 3 feet by 2050', verdict: 'partially_supported', source: 'Climate Report' },
+    { icon: '💊', claim: 'Vitamin D prevents COVID infection', verdict: 'contradicted', source: 'Social Media' },
+    { icon: '📈', claim: 'Remote workers are 13% more productive', verdict: 'exaggerated', source: 'Business Insider' },
+    { icon: '🐘', claim: 'African elephants in captivity are getting fat', verdict: 'supported', source: 'UAB News' },
+  ];
 
   // ─── Ingest ──────────────────────────────────────────────────────────
 
@@ -651,9 +700,32 @@ const SynapsePage: React.FC = () => {
                 <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#ffffff', marginBottom: '6px', letterSpacing: '-0.5px' }}>
                   Verify before you trust
                 </h1>
-                <p style={{ fontSize: '13px', color: '#666666', maxWidth: '480px', margin: '0 auto' }}>
+                <p style={{ fontSize: '13px', color: '#666666', maxWidth: '480px', margin: '0 auto', marginBottom: '16px' }}>
                   Paste any URL, text, or audio. Synapse extracts every claim and cross-references it against academic papers, institutional sources, and counter-evidence.
                 </p>
+                {/* Preloaded examples */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '700px', margin: '0 auto' }}>
+                  {PRELOADED_EXAMPLES.map((ex, i) => {
+                    const vc = VERDICT_COLORS[ex.verdict] || VERDICT_COLORS.unsupported;
+                    return (
+                      <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}
+                        style={{
+                          padding: '6px 10px', borderRadius: '6px', border: `1px solid ${vc.border}`,
+                          backgroundColor: vc.bg, color: vc.text, fontSize: '10px', fontWeight: 600,
+                          cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '5px',
+                          animation: `fadeIn 0.3s ease ${i * 0.08}s both`,
+                        }}>
+                        <span>{ex.icon}</span>
+                        <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ex.claim.length > 40 ? ex.claim.slice(0, 40) + '...' : ex.claim}
+                        </span>
+                        <span style={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', opacity: 0.7 }}>
+                          {ex.verdict.replace('_', ' ')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
@@ -725,7 +797,8 @@ const SynapsePage: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* Collapsed input bar */
+        <>
+        {/* Collapsed input bar */}
         <div style={{
           padding: '6px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
           display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0a0a0a',
@@ -734,13 +807,61 @@ const SynapsePage: React.FC = () => {
           <span style={{ fontSize: '11px', color: '#999999', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {ingestedTitle || inputValue.slice(0, 80)}
           </span>
-          <button onClick={() => { setInputCollapsed(false); setClaims([]); setSelectedClaimId(null); setTraceLines([]); }}
+          <button onClick={() => { setInputCollapsed(false); setClaims([]); setSelectedClaimId(null); setTraceLines([]); setReportId(null); }}
             style={{
               padding: '3px 10px', borderRadius: '4px', border: '1px solid #1a1a1a',
               backgroundColor: 'transparent', color: '#555555', fontSize: '10px', fontWeight: 600,
               cursor: 'pointer', transition: 'all 0.15s',
             }}>New Analysis</button>
         </div>
+        {/* Action bar — shown when all claims verified */}
+        {doneClaims > 0 && !claims.some(c => c.status === 'pending' || c.status === 'verifying') && (
+          <div style={{
+            padding: '8px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#050505',
+            animation: 'fadeIn 0.3s ease',
+          }}>
+            <span style={{ fontSize: '10px', color: '#555555', fontWeight: 600 }}>
+              ✅ {doneClaims} claims · {pipelineStats.apiCalls} API calls · {pipelineStats.services.size} services
+              {pipelineStats.durationMs > 0 && ` · ${(pipelineStats.durationMs / 1000).toFixed(0)}s`}
+            </span>
+            <div style={{ flex: 1 }} />
+            <button onClick={shareReport}
+              style={{
+                padding: '5px 14px', borderRadius: '5px', border: '1px solid #ffffff',
+                backgroundColor: '#ffffff', color: '#000000',
+                fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+              📤 Share Report
+            </button>
+            {reportId && (
+              <button onClick={() => {
+                const text = `I just verified "${ingestedTitle || 'this article'}" with Synapse. ${doneClaims} claims analyzed. See the full breakdown:`;
+                const url = `${window.location.origin}/report/${reportId}`;
+                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+              }}
+                style={{
+                  padding: '5px 10px', borderRadius: '5px', border: '1px solid #1a1a1a',
+                  backgroundColor: 'transparent', color: '#555555',
+                  fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                }}>
+                𝕏 Share
+              </button>
+            )}
+            {reportId && (
+              <button onClick={() => window.open(`/report/${reportId}`, '_blank')}
+                style={{
+                  padding: '5px 10px', borderRadius: '5px', border: '1px solid #1a1a1a',
+                  backgroundColor: 'transparent', color: '#555555',
+                  fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                }}>
+                View Report ↗
+              </button>
+            )}
+          </div>
+        )}
+        </>
       )}
 
       {/* ═══ Main Content ═════════════════════════════════════════════════ */}
@@ -768,7 +889,56 @@ const SynapsePage: React.FC = () => {
                 Verify All
               </button>
             )}
+            {claims.length > 0 && doneClaims > 0 && !claims.some(c => c.status === 'pending' || c.status === 'verifying') && (
+              <button onClick={shareReport}
+                style={{
+                  padding: '3px 10px', borderRadius: '5px', border: '1px solid #ffffff',
+                  backgroundColor: '#ffffff', color: '#000000',
+                  fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                }}>
+                📤 Share
+              </button>
+            )}
           </div>
+
+          {/* Summary stats card */}
+          {doneClaims > 0 && !claims.some(c => c.status === 'verifying') && (
+            <div style={{
+              margin: '6px', padding: '10px 12px', borderRadius: '8px',
+              border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a',
+              animation: 'fadeIn 0.3s ease',
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#ffffff', marginBottom: '6px' }}>
+                {doneClaims} claim{doneClaims !== 1 ? 's' : ''} verified
+              </div>
+              {/* Stacked bar */}
+              <div style={{ display: 'flex', height: '4px', borderRadius: '2px', overflow: 'hidden', backgroundColor: '#1a1a1a', marginBottom: '8px' }}>
+                {Object.entries(verdictCounts).map(([v, count]) => {
+                  const vc = VERDICT_COLORS[v] || VERDICT_COLORS.unsupported;
+                  return <div key={v} style={{ flex: count, backgroundColor: vc.text, transition: 'flex 0.5s' }} />;
+                })}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {Object.entries(verdictCounts).map(([v, count]) => {
+                  const vc = VERDICT_COLORS[v] || VERDICT_COLORS.unsupported;
+                  return (
+                    <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: vc.text }} />
+                      <span style={{ color: vc.text, fontWeight: 600 }}>{count}</span>
+                      <span style={{ color: '#555555' }}>{v.replace('_', ' ')}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {pipelineStats.sources > 0 && (
+                <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #1a1a1a', display: 'flex', gap: '8px', fontSize: '9px', color: '#444444', fontFamily: "'JetBrains Mono', monospace" }}>
+                  <span>{pipelineStats.sources} sources</span>
+                  {pipelineStats.durationMs > 0 && <span>{(pipelineStats.durationMs / 1000).toFixed(1)}s</span>}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ flex: 1, overflow: 'auto', padding: '6px' }}>
             {isExtracting && (
@@ -1526,6 +1696,18 @@ const SynapsePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ═══ Share Toast ═══════════════════════════════════════════════════ */}
+      {shareToast && (
+        <div style={{
+          position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+          padding: '10px 20px', borderRadius: '8px', backgroundColor: '#ffffff', color: '#000000',
+          fontSize: '12px', fontWeight: 700, zIndex: 100, animation: 'fadeIn 0.2s ease',
+          boxShadow: '0 4px 20px rgba(255,255,255,0.15)',
+        }}>
+          {shareToast}
+        </div>
+      )}
 
       {/* ═══ Powered By Footer ═══════════════════════════════════════════ */}
       <div style={{
