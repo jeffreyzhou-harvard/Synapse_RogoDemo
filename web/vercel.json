@@ -1,5 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/report/(.*)", "destination": "/index.html" }
-  ]
-}
