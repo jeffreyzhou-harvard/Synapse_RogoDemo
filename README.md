@@ -1,42 +1,31 @@
-# Synapse — Think better, not faster
+# Synapse — Every claim, interrogated
 
-**[usesynapse.org](https://usesynapse.org)**
+Synapse is a **claim-level intelligence engine** that takes any piece of content — a URL, pasted text, or audio — extracts every factual claim, and runs deep multi-step agent-driven verification on each one. It doesn't just tell you "true or false." It shows you the full forensic breakdown: where the evidence comes from, how strong it is, where the claim originated, and how it mutated as it spread.
 
-Synapse is an AI-enabled research workspace that helps learners draft, challenge, and connect their ideas. Instead of generating answers, Synapse uses AI agents to push you toward deeper, more rigorous thinking.
+The verification process itself is the product. The user watches the agent think, search, evaluate, and reason in real time. Every step is visible. The reasoning IS the interface.
 
 ---
 
-## Features
+## How It Works
 
-### Research Document Editor
-A distraction-free writing environment with auto-save, section detection, and Word/DOCX export.
+### 1. Ingest Anything
+Paste a URL (article, blog, YouTube), raw text, or upload audio/video. Synapse extracts clean text and feeds it to the claim extraction pipeline.
 
-### AI Thinking Agents
-Select any text in your document to invoke specialized AI agents:
-- **🔍 Find Evidence** — Searches for academic sources that support or challenge a claim, with structured citations
-- **⚔️ Challenge** — Plays devil's advocate to stress-test your arguments
-- **💡 Simplify** — Explains complex passages in plain language
-- **🛡️ Steelman** — Strengthens the best version of your argument
-- **🤔 Socratic** — Asks probing questions to deepen your reasoning
-- **🔗 Connect** — Finds hidden connections between two ideas in your paper
+### 2. Claim Extraction
+An LLM identifies every discrete, verifiable factual claim — skipping opinions, rhetoric, and subjective statements. Each claim is tagged by type (quantitative, directional, categorical, provenance).
 
-### Citations Panel
-Structured evidence results with source titles, findings, verdict (supported/challenged/mixed), and one-click citation insertion in APA/MLA/Chicago formats.
+### 3. 6-Step Verification Pipeline
+Each claim runs through a multi-agent pipeline, streamed to the UI in real time via SSE:
 
-### Claim Tracker
-Automatically identifies claims in your document and tracks which are supported, challenged, or unverified.
+- **Step 1 — Decomposition**: Break compound claims into atomic, independently verifiable sub-claims
+- **Step 2 — Multi-Source Evidence Retrieval**: Parallel search across Semantic Scholar (academic papers), Perplexity Sonar (institutional + journalism), and deliberate counter-evidence search
+- **Step 3 — Evidence Quality Evaluation**: Score each source (0-100) based on study type, recency, citation count, and source authority
+- **Step 4 — Verdict Synthesis**: Per-sub-claim verdicts (Supported / Exaggerated / Contradicted / Unsupported) rolled up into an overall verdict with confidence level
+- **Step 5 — Provenance Tracing**: Trace the claim's likely origin and mutation path — from original study to the version being checked
+- **Step 6 — Corrected Claim**: Generate an evidence-backed corrected version, a steel-manned version, and key caveats
 
-### Argument Map
-Visual D3-based graph showing the logical structure of your argument — claims, evidence, and counterarguments.
-
-### Research Question Wizard
-A Socratic conversation that helps you refine a vague topic into a sharp, researchable question before you start writing.
-
-### Audio Transcription
-Upload interview or lecture recordings for automatic transcription (via Deepgram) with AI-powered claim extraction and source recommendations.
-
-### Writing Quality Analysis
-Per-section metrics for clarity, specificity, and argument strength.
+### 4. Live Agent Reasoning Trace
+A terminal-style trace panel shows every step the agent takes in real time — searches fired, evidence found, scores assigned, verdicts reached.
 
 ---
 
@@ -45,12 +34,11 @@ Per-section metrics for clarity, specificity, and argument strength.
 | Layer | Technology |
 |-------|-----------|
 | **Backend** | Python, FastAPI, Uvicorn |
-| **AI** | Anthropic Claude, OpenAI, Google Gemini (multi-provider fallback) |
-| **Transcription** | Deepgram |
-| **Frontend** | React 18, TypeScript, Vite, TailwindCSS |
-| **Visualization** | D3.js |
-| **Export** | docx (Word), file-saver |
-| **Storage** | localStorage (client-side) |
+| **AI** | Anthropic Claude (primary), Google Gemini (fallback) |
+| **Search** | Semantic Scholar API, Perplexity Sonar API |
+| **Transcription** | Deepgram Nova-2 |
+| **Frontend** | React 18, TypeScript, Vite |
+| **Streaming** | Server-Sent Events (SSE) |
 
 ---
 
@@ -59,28 +47,30 @@ Per-section metrics for clarity, specificity, and argument strength.
 ```
 synapse/
 ├── app/
-│   ├── main.py              # FastAPI backend — all AI endpoints
-│   ├── agent_service.py     # Agent delegation logic
-│   ├── github_service.py    # GitHub integration
-│   └── slack_service.py     # Slack integration
+│   ├── main.py                 # FastAPI backend — all endpoints
+│   ├── verification_engine.py  # 6-step claim verification pipeline
+│   ├── deep_dive_agent.py      # Multi-step research agent
+│   └── vector_store.py         # In-memory vector store
 ├── web/
-│   ├── src/
-│   │   ├── ui/
-│   │   │   ├── DocumentEditor.tsx   # Main editor with agent toolbar
-│   │   │   ├── HomePage.tsx         # Dashboard & research wizard
-│   │   │   ├── AIChatSidebar.tsx    # AI chat panel
-│   │   │   ├── CitationsPanel.tsx   # Evidence & citations
-│   │   │   ├── ClaimTracker.tsx     # Claim verification tracker
-│   │   │   ├── ArgumentMap.tsx      # Visual argument graph
-│   │   │   ├── TranscriptionPanel.tsx
-│   │   │   └── SelectionToolbar.tsx # Agent selection on highlight
-│   │   └── services/
-│   │       └── documentService.ts   # Document CRUD (localStorage)
+│   ├── src/ui/
+│   │   ├── SynapsePage.tsx     # Main verification UI (dark theme)
+│   │   └── NewApp.tsx          # Router
 │   ├── package.json
 │   └── vite.config.ts
 ├── requirements.txt
 └── .env
 ```
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ingest` | POST | Ingest URL or raw text, return clean extracted text |
+| `/api/ingest-audio` | POST | Upload audio/video, transcribe via Deepgram |
+| `/api/extract-claims` | POST | Extract verifiable claims from text via LLM |
+| `/api/verify` | POST | Run full 6-step verification pipeline (SSE stream) |
 
 ---
 
@@ -100,10 +90,12 @@ pip install -r requirements.txt
 ### 2. Configure Environment
 ```bash
 cp .env_sample .env
-# Add your API keys:
+# Required:
 #   ANTHROPIC_API_KEY=...
-#   OPENAI_API_KEY=...       (optional fallback)
-#   DEEPGRAM_API_KEY=...     (optional, for transcription)
+#   GOOGLE_API_KEY=...        (Gemini fallback)
+#   PERPLEXITY_API_KEY=...    (Sonar search)
+# Optional:
+#   DEEPGRAM_API_KEY=...      (audio transcription)
 ```
 
 ### 3. Start Backend

@@ -4098,3 +4098,126 @@ def slack_status():
         "configured": bool(slack_service and slack_service.bot_token),
         "message": "Slack integration is active" if SLACK_ENABLED else "Slack integration disabled - check environment variables"
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SYNAPSE VERIFICATION ENGINE — Claim-level intelligence endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+from fastapi.responses import StreamingResponse
+from app.verification_engine import (
+    extract_claims, extract_url_content, run_verification_pipeline,
+    trace_provenance, generate_corrected_claim, VerificationEvent,
+)
+
+
+class IngestRequest(BaseModel):
+    url: Optional[str] = None
+    text: Optional[str] = None
+
+class IngestResponse(BaseModel):
+    title: str
+    text: str
+    source_type: str  # url, text, audio
+    url: Optional[str] = None
+
+class ExtractClaimsRequest(BaseModel):
+    text: str
+
+class ClaimItem(BaseModel):
+    id: str
+    original: str
+    normalized: str
+    type: str
+
+class ExtractClaimsResponse(BaseModel):
+    claims: List[ClaimItem]
+
+class VerifyRequest(BaseModel):
+    claim: str
+
+
+@app.post("/api/ingest", response_model=IngestResponse)
+def api_ingest(req: IngestRequest):
+    """Ingest content from URL or raw text. Returns clean extracted text."""
+    if req.url:
+        result = extract_url_content(req.url)
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {result['error']}")
+        return IngestResponse(
+            title=result.get("title", req.url),
+            text=result.get("text", ""),
+            source_type="url",
+            url=req.url,
+        )
+    elif req.text:
+        # Direct text paste — just pass through
+        title = req.text[:60].strip().replace("\n", " ")
+        return IngestResponse(title=title, text=req.text, source_type="text")
+    else:
+        raise HTTPException(status_code=400, detail="Provide either 'url' or 'text'")
+
+
+@app.post("/api/ingest-audio", response_model=IngestResponse)
+async def api_ingest_audio(file: UploadFile = File(...)):
+    """Ingest audio/video file — transcribe via Deepgram, return text."""
+    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+    if not deepgram_key:
+        raise HTTPException(status_code=503, detail="Deepgram API not configured")
+
+    audio_bytes = await file.read()
+    try:
+        client = DeepgramClient(deepgram_key)
+        options = PrerecordedOptions(
+            model="nova-2", language="en", smart_format=True,
+            punctuate=True, paragraphs=True, diarize=True,
+        )
+        source = {"buffer": audio_bytes, "mimetype": file.content_type or "audio/mpeg"}
+        response = client.listen.rest.v("1").transcribe_file(source, options)
+        transcript = response.results.channels[0].alternatives[0].transcript
+        return IngestResponse(
+            title=file.filename or "Audio Upload",
+            text=transcript,
+            source_type="audio",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+
+@app.post("/api/extract-claims", response_model=ExtractClaimsResponse)
+def api_extract_claims(req: ExtractClaimsRequest):
+    """Extract verifiable factual claims from text."""
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text is empty")
+    raw_claims = extract_claims(req.text)
+    claims = []
+    for i, c in enumerate(raw_claims):
+        claims.append(ClaimItem(
+            id=c.get("id", f"claim-{i+1}"),
+            original=c.get("original", ""),
+            normalized=c.get("normalized", c.get("original", "")),
+            type=c.get("type", "categorical"),
+        ))
+    return ExtractClaimsResponse(claims=claims)
+
+
+@app.post("/api/verify")
+def api_verify(req: VerifyRequest):
+    """Run the full 6-step verification pipeline on a single claim.
+    Returns Server-Sent Events (SSE) stream for real-time UI updates."""
+    if not req.claim.strip():
+        raise HTTPException(status_code=400, detail="Claim is empty")
+
+    def event_stream():
+        for event in run_verification_pipeline(req.claim):
+            yield event.to_sse()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

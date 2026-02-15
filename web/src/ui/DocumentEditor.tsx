@@ -95,6 +95,11 @@ const DocumentEditor: React.FC = () => {
   const titleRef = useRef<HTMLInputElement>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
 
+  // Compute which right panel is active — Deep Dive takes priority over Sources
+  const deepDiveOpen = !!(deepDiveResult || isDeepDiving);
+  const rightPanelMode: 'deepdive' | 'sources' | null = deepDiveOpen ? 'deepdive' : isSplitView ? 'sources' : null;
+  const hasRightPanel = rightPanelMode !== null;
+
   // ── Show onboarding tooltip when split view first opens ──────────
   useEffect(() => {
     if (isSplitView && sourceMaterials.length === 0) {
@@ -1336,8 +1341,8 @@ const DocumentEditor: React.FC = () => {
           {/* Editor body — split view container */}
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             {/* Left: Editor */}
-            <div style={{ flex: (isSplitView || deepDiveResult || isDeepDiving) ? '1 1 50%' : '1 1 100%', overflow: 'auto', display: 'flex', justifyContent: 'center', transition: 'flex 0.25s ease' }}>
-            <div style={{ width: '100%', maxWidth: (isSplitView || deepDiveResult || isDeepDiving) ? '100%' : '720px', padding: (isSplitView || deepDiveResult || isDeepDiving) ? '32px 28px 120px' : '48px 40px 120px', minHeight: 'calc(100vh - 48px)' }}>
+            <div style={{ flex: hasRightPanel ? '1 1 50%' : '1 1 100%', overflow: 'auto', display: 'flex', justifyContent: 'center', transition: 'flex 0.25s ease' }}>
+            <div style={{ width: '100%', maxWidth: hasRightPanel ? '100%' : '720px', padding: hasRightPanel ? '32px 28px 120px' : '48px 40px 120px' }}>
               {/* Title */}
               <input ref={titleRef} type="text" placeholder="Untitled" value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -1570,8 +1575,8 @@ const DocumentEditor: React.FC = () => {
             </div>
             </div>
 
-            {/* Right: Source Panel (split view) */}
-            {isSplitView && (
+            {/* Right: Source Panel (only when sources mode is active, not during Deep Dive) */}
+            {rightPanelMode === 'sources' && (
               <div style={{ flex: '1 1 50%', borderLeft: '2px solid #e5e7eb', overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'flex 0.25s ease', position: 'relative' }}>
                 <SourcePanel
                   isOpen={isSplitView}
@@ -1621,8 +1626,8 @@ const DocumentEditor: React.FC = () => {
               </div>
             )}
 
-            {/* ── Deep Dive Panel (inline split) ───────────────────── */}
-            {(deepDiveResult || isDeepDiving) && (
+            {/* ── Deep Dive Panel (inline split — replaces source panel when active) */}
+            {rightPanelMode === 'deepdive' && (
               <div style={{
                 flex: '1 1 50%', borderLeft: '2px solid #e5e7eb', overflow: 'hidden',
                 display: 'flex', flexDirection: 'column', transition: 'flex 0.25s ease',
