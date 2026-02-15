@@ -106,6 +106,37 @@ const STEP_ICONS: Record<string, string> = {
   correction: '✏️',
 };
 
+// ─── Agent Orchestration ──────────────────────────────────────────────────
+
+interface AgentChip {
+  id: string;
+  service: string;
+  task: string;
+  label: string;
+  color: string;
+  status: 'pending' | 'active' | 'done';
+}
+
+const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
+  claude:    { color: '#D4A574', label: 'Claude' },
+  sscholar:  { color: '#1857B6', label: 'S.Scholar' },
+  pubmed:    { color: '#0D9F6E', label: 'PubMed' },
+  sonar:     { color: '#20B2AA', label: 'Sonar' },
+  deepgram:  { color: '#7C3AED', label: 'Deepgram' },
+};
+
+const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
+  { id: 'extract',    service: 'claude',   task: 'Extract',    label: 'Claude · Extract',           color: '#D4A574' },
+  { id: 'decompose',  service: 'claude',   task: 'Decompose',  label: 'Claude · Decompose',         color: '#D4A574' },
+  { id: 'sscholar',   service: 'sscholar', task: 'Papers',     label: 'S.Scholar · Papers',         color: '#1857B6' },
+  { id: 'sonar_web',  service: 'sonar',    task: 'Web',        label: 'Sonar · Web',                color: '#20B2AA' },
+  { id: 'sonar_counter', service: 'sonar', task: 'Counter',    label: 'Sonar · Counter',            color: '#20B2AA' },
+  { id: 'evaluate',   service: 'claude',   task: 'Evaluate',   label: 'Claude · Evaluate',          color: '#D4A574' },
+  { id: 'synthesize', service: 'claude',   task: 'Synthesize', label: 'Claude · Synthesize',        color: '#D4A574' },
+  { id: 'provenance', service: 'sonar',    task: 'Provenance', label: 'Sonar+Claude · Provenance',  color: '#20B2AA' },
+  { id: 'correct',    service: 'claude',   task: 'Correct',    label: 'Claude · Correct',           color: '#D4A574' },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────
 
 const SynapsePage: React.FC = () => {
@@ -127,8 +158,12 @@ const SynapsePage: React.FC = () => {
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
 
+  // Agent orchestration state (per-claim)
+  const [agentChips, setAgentChips] = useState<AgentChip[]>([]);
+  const [pipelineStats, setPipelineStats] = useState({ steps: 0, apiCalls: 0, services: new Set<string>(), sources: 0, durationMs: 0 });
+
   // Trace log
-  const [traceLines, setTraceLines] = useState<{ text: string; type: string; indent: number }[]>([]);
+  const [traceLines, setTraceLines] = useState<{ text: string; type: string; indent: number; badge?: string }[]>([]);
   const traceRef = useRef<HTMLDivElement>(null);
 
   // File input
@@ -141,8 +176,26 @@ const SynapsePage: React.FC = () => {
     }
   }, [traceLines]);
 
-  const addTrace = useCallback((text: string, type: string = 'info', indent: number = 0) => {
-    setTraceLines(prev => [...prev, { text, type, indent }]);
+  const addTrace = useCallback((text: string, type: string = 'info', indent: number = 0, badge?: string) => {
+    setTraceLines(prev => [...prev, { text, type, indent, badge }]);
+  }, []);
+
+  // Agent chip helpers
+  const activateChip = useCallback((chipId: string) => {
+    setAgentChips(prev => prev.map(c => c.id === chipId ? { ...c, status: 'active' as const } : c));
+    setPipelineStats(prev => ({ ...prev, steps: prev.steps + 1 }));
+  }, []);
+
+  const completeChip = useCallback((chipId: string) => {
+    setAgentChips(prev => prev.map(c => c.id === chipId ? { ...c, status: 'done' as const } : c));
+  }, []);
+
+  const bumpApiCalls = useCallback((service: string) => {
+    setPipelineStats(prev => {
+      const s = new Set(prev.services);
+      s.add(service);
+      return { ...prev, apiCalls: prev.apiCalls + 1, services: s };
+    });
   }, []);
 
   // ─── Ingest ──────────────────────────────────────────────────────────
@@ -195,7 +248,10 @@ const SynapsePage: React.FC = () => {
 
   const extractClaims = useCallback(async (text: string) => {
     setIsExtracting(true);
-    addTrace('Extracting claims...', 'step');
+    // Initialize pipeline with just the extract chip active
+    setAgentChips(INITIAL_PIPELINE.map(c => ({ ...c, status: c.id === 'extract' ? 'active' as const : 'pending' as const })));
+    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Claude']), sources: 0, durationMs: 0 });
+    addTrace('Extracting claims...', 'step', 0, 'claude');
 
     try {
       const resp = await fetch('/api/extract-claims', {
@@ -216,7 +272,8 @@ const SynapsePage: React.FC = () => {
         status: 'pending' as const,
       }));
       setClaims(extracted);
-      addTrace(`${extracted.length} verifiable claims extracted`, 'success');
+      completeChip('extract');
+      addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'claude');
       extracted.forEach((c, i) => {
         addTrace(`Claim ${i + 1}: "${c.original.slice(0, 80)}${c.original.length > 80 ? '...' : ''}"`, 'info', 1);
       });
@@ -224,7 +281,7 @@ const SynapsePage: React.FC = () => {
       addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
     }
     setIsExtracting(false);
-  }, [addTrace]);
+  }, [addTrace, completeChip]);
 
   // ─── Verify Single Claim (SSE) ──────────────────────────────────────
 
@@ -233,6 +290,13 @@ const SynapsePage: React.FC = () => {
     if (!claim) return;
 
     setSelectedClaimId(claimId);
+
+    // Initialize agent pipeline — extract already done, decompose starts
+    setAgentChips(INITIAL_PIPELINE.map(c => ({
+      ...c,
+      status: c.id === 'extract' ? 'done' as const : 'pending' as const,
+    })));
+    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Claude']), sources: 0, durationMs: 0 });
 
     // Update claim status
     setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'verifying' as const, verification: {
@@ -339,39 +403,82 @@ const SynapsePage: React.FC = () => {
               return { ...c, verification: v as VerificationState };
             }));
 
-            // Add to trace
+            // --- Agent chip state transitions ---
             switch (type) {
-              case 'step_start':
-                addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step');
+              case 'step_start': {
+                const chipMap: Record<string, string> = {
+                  decomposition: 'decompose', evaluation: 'evaluate',
+                  synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
+                };
+                const chipId = chipMap[data.step];
+                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'Sonar' : 'Claude'); }
+                if (data.step === 'evidence_retrieval') {
+                  // Activate all search chips simultaneously
+                  activateChip('sscholar'); activateChip('sonar_web'); activateChip('sonar_counter');
+                  bumpApiCalls('Semantic Scholar'); bumpApiCalls('Sonar'); bumpApiCalls('Sonar');
+                }
                 break;
+              }
+              case 'step_complete': {
+                const completeMap: Record<string, string[]> = {
+                  decomposition: ['decompose'], evaluation: ['evaluate'],
+                  synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
+                  evidence_retrieval: ['sscholar', 'sonar_web', 'sonar_counter'],
+                };
+                (completeMap[data.step] || []).forEach(id => completeChip(id));
+                if (data.total_sources) setPipelineStats(prev => ({ ...prev, sources: data.total_sources }));
+                break;
+              }
+              case 'evidence_found':
+                bumpApiCalls(data.tier === 'academic' ? 'Semantic Scholar' : 'Sonar');
+                setPipelineStats(prev => ({ ...prev, sources: prev.sources + 1 }));
+                break;
+              case 'verification_complete':
+                setPipelineStats(prev => ({ ...prev, durationMs: data.total_duration_ms, sources: data.total_sources || prev.sources }));
+                break;
+            }
+
+            // --- Add to trace with API badges ---
+            switch (type) {
+              case 'step_start': {
+                const badgeMap: Record<string, string> = {
+                  decomposition: 'claude', evaluation: 'claude',
+                  synthesis: 'claude', correction: 'claude', provenance: 'sonar',
+                  evidence_retrieval: 'sscholar',
+                };
+                addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, badgeMap[data.step]);
+                break;
+              }
               case 'subclaim':
                 addTrace(`Sub-claim: "${data.text}"`, 'info', 1);
                 break;
               case 'search_start':
-                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1);
+                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'sscholar');
                 break;
-              case 'evidence_found':
-                addTrace(`Found: ${data.title?.slice(0, 50)} [${data.tier}]`, 'info', 2);
+              case 'evidence_found': {
+                const evBadge = data.tier === 'academic' ? 'sscholar' : data.tier === 'counter' ? 'sonar' : 'sonar';
+                addTrace(`Found: ${data.title?.slice(0, 50)} [${data.tier}]`, 'info', 2, evBadge);
                 break;
+              }
               case 'evidence_scored':
-                addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2);
+                addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2, 'claude');
                 break;
               case 'subclaim_verdict': {
                 const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : data.verdict === 'exaggerated' ? '⚠️' : '🔶';
-                addTrace(`${icon} "${data.text?.slice(0, 50)}..." → ${data.verdict} (${data.confidence})`, 'verdict');
+                addTrace(`${icon} "${data.text?.slice(0, 50)}..." → ${data.verdict} (${data.confidence})`, 'verdict', 0, 'claude');
                 break;
               }
               case 'overall_verdict': {
                 const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : '⚠️';
-                addTrace(`${icon} OVERALL: ${data.verdict.toUpperCase()} (${data.confidence})`, 'verdict');
+                addTrace(`${icon} OVERALL: ${data.verdict.toUpperCase()} (${data.confidence})`, 'verdict', 0, 'claude');
                 addTrace(data.summary, 'info', 1);
                 break;
               }
               case 'provenance_node':
-                addTrace(`${data.source_type}: "${data.text?.slice(0, 60)}..." (${data.date || '?'})`, 'info', 1);
+                addTrace(`${data.source_type}: "${data.text?.slice(0, 60)}..." (${data.date || '?'})`, 'info', 1, 'sonar');
                 break;
               case 'corrected_claim':
-                addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1);
+                addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1, 'claude');
                 break;
               case 'verification_complete':
                 addTrace(`Done in ${(data.total_duration_ms / 1000).toFixed(1)}s — ${data.total_sources} sources`, 'success');
@@ -388,7 +495,7 @@ const SynapsePage: React.FC = () => {
       addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
       setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c));
     }
-  }, [claims, addTrace]);
+  }, [claims, addTrace, activateChip, completeChip, bumpApiCalls]);
 
   // ─── Verify All Claims ───────────────────────────────────────────────
 
@@ -460,6 +567,11 @@ const SynapsePage: React.FC = () => {
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes glow { 0%, 100% { box-shadow: 0 0 8px rgba(251,191,36,0.3); } 50% { box-shadow: 0 0 20px rgba(251,191,36,0.6); } }
         @keyframes verdictPop { 0% { transform: scale(0.8); opacity: 0; } 50% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes agentPulse {
+          0% { box-shadow: 0 0 0 0 var(--agent-glow); }
+          50% { box-shadow: 0 0 12px 4px var(--agent-glow); }
+          100% { box-shadow: 0 0 0 0 var(--agent-glow); }
+        }
         ::selection { background: rgba(251,191,36,0.3); }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 5px; }
@@ -783,6 +895,74 @@ const SynapsePage: React.FC = () => {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* ═══ Agent Orchestration Bar ═══════════════════════════ */}
+                {agentChips.length > 0 && (
+                  <div style={{
+                    marginTop: '10px', display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center',
+                    animation: 'fadeIn 0.3s ease',
+                  }}>
+                    {agentChips.map((chip, i) => {
+                      const isDone = chip.status === 'done';
+                      const isActive = chip.status === 'active';
+                      const isPending = chip.status === 'pending';
+                      return (
+                        <React.Fragment key={chip.id}>
+                          <div
+                            style={{
+                              padding: '3px 8px', borderRadius: '5px', fontSize: '9px', fontWeight: 700,
+                              display: 'flex', alignItems: 'center', gap: '4px',
+                              border: `1px solid ${isDone ? `${chip.color}50` : isActive ? chip.color : '#1e293b'}`,
+                              backgroundColor: isDone ? `${chip.color}15` : isActive ? `${chip.color}20` : 'transparent',
+                              color: isDone ? `${chip.color}` : isActive ? chip.color : '#475569',
+                              opacity: isPending ? 0.35 : isDone ? 0.75 : 1,
+                              transition: 'all 0.3s ease',
+                              animation: isActive ? 'agentPulse 1.5s ease-in-out infinite' : 'none',
+                              // @ts-ignore -- CSS custom property for the pulse keyframe
+                              '--agent-glow': `${chip.color}60`,
+                            } as React.CSSProperties}
+                          >
+                            {isDone && <span style={{ fontSize: '8px' }}>✓</span>}
+                            {isActive && <span style={{
+                              width: '5px', height: '5px', borderRadius: '50%',
+                              backgroundColor: chip.color,
+                              animation: 'pulse 0.8s ease-in-out infinite',
+                              flexShrink: 0,
+                            }} />}
+                            {chip.label}
+                          </div>
+                          {i < agentChips.length - 1 && (
+                            <span style={{ fontSize: '8px', color: '#334155' }}>→</span>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Pipeline Stats */}
+                {(pipelineStats.steps > 0 || pipelineStats.durationMs > 0) && (
+                  <div style={{
+                    marginTop: '8px', fontSize: '9px', color: '#475569', fontWeight: 600,
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    display: 'flex', gap: '10px', flexWrap: 'wrap',
+                    animation: 'fadeIn 0.3s ease',
+                  }}>
+                    <span>{pipelineStats.steps} agent steps</span>
+                    <span style={{ color: '#334155' }}>·</span>
+                    <span>{pipelineStats.apiCalls} API calls</span>
+                    <span style={{ color: '#334155' }}>·</span>
+                    <span>{pipelineStats.services.size} services</span>
+                    <span style={{ color: '#334155' }}>·</span>
+                    <span>{pipelineStats.sources} sources evaluated</span>
+                    {pipelineStats.durationMs > 0 && (
+                      <>
+                        <span style={{ color: '#334155' }}>·</span>
+                        <span>{(pipelineStats.durationMs / 1000).toFixed(1)}s</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1179,13 +1359,22 @@ const SynapsePage: React.FC = () => {
                   info: { color: '#64748b', icon: '·' },
                 };
                 const cfg = typeConfig[line.type] || typeConfig.info;
+                const badgeInfo = line.badge ? AGENT_BRAND_COLORS[line.badge] : null;
                 return (
                   <div key={i} style={{
                     color: cfg.color, paddingLeft: `${line.indent * 12}px`,
-                    animation: 'fadeIn 0.15s ease', display: 'flex', gap: '5px',
+                    animation: 'fadeIn 0.15s ease', display: 'flex', gap: '5px', alignItems: 'flex-start',
                   }}>
                     <span style={{ flexShrink: 0, opacity: 0.6 }}>{line.indent > 0 ? '│' : cfg.icon}</span>
-                    <span style={{ wordBreak: 'break-word' }}>{line.text}</span>
+                    <span style={{ wordBreak: 'break-word', flex: 1 }}>{line.text}</span>
+                    {badgeInfo && (
+                      <span style={{
+                        flexShrink: 0, fontSize: '7px', fontWeight: 800, padding: '1px 5px',
+                        borderRadius: '3px', backgroundColor: `${badgeInfo.color}20`,
+                        color: badgeInfo.color, border: `1px solid ${badgeInfo.color}40`,
+                        letterSpacing: '0.3px', whiteSpace: 'nowrap', marginTop: '1px',
+                      }}>{badgeInfo.label}</span>
+                    )}
                   </div>
                 );
               })}
