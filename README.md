@@ -1,96 +1,131 @@
-## Vision: Notion for engineering teams
+# Synapse — Think better, not faster
 
-Build a living technical knowledge system that deeply understands both code and docs, powering code-native documentation, intelligent technical specs, automated runbooks, and a dynamic team knowledge graph.
+**[usesynapse.org](https://usesynapse.org)**
 
-### I. Vision Statement
-- **A living technical knowledge system**: Docs that stay current with code, capture decisions, and automate operational knowledge.
-- **Deep understanding of both code and docs**: Index and model code, APIs, infra, and narratives together.
-
-### II. Architectural Pillars
-
-#### Code-Native Documentation
-- **Live code blocks**: Execute sandboxed code blocks and persist outputs alongside docs.
-- **Auto-generated API docs**: Support OpenAPI, GraphQL, and protobuf sources.
-- **Automatic versioning**: Track docs next to code via Git and surface drift.
-- **Bidirectional sync**: Keep docs and config/code in sync.
-
-#### Intelligent Technical Specs
-- **AI-powered RFC generation**: Analyze codebase, suggest patterns, and scaffold specs.
-- **Technical-debt tracking**: Link docs to hotspots (complexity, churn, coverage gaps).
-- **Design decision records (ADRs)**: Connect decisions to implementation and detect drift.
-- **Dependency visualization**: Real-time graphs of services, libraries, and data flows.
-
-#### Runbook Automation Platform
-- **Executable playbooks**: One-click remediation with guarded execution.
-- **Incident timeline reconstruction**: Pull logs, metrics, and chats to create timelines.
-- **Blameless postmortems**: Auto-drafts from observability tools and chat.
-- **Chaos integration**: Validate runbooks proactively.
-
-#### Team Knowledge Graph
-- **Semantic model of the org**: People, code, systems, tools, events, and docs in one graph.
+Synapse is an AI-enabled research workspace that helps learners draft, challenge, and connect their ideas. Instead of generating answers, Synapse uses AI agents to push you toward deeper, more rigorous thinking.
 
 ---
 
-## Monorepo Structure (MVP)
+## Features
+
+### Research Document Editor
+A distraction-free writing environment with auto-save, section detection, and Word/DOCX export.
+
+### AI Thinking Agents
+Select any text in your document to invoke specialized AI agents:
+- **🔍 Find Evidence** — Searches for academic sources that support or challenge a claim, with structured citations
+- **⚔️ Challenge** — Plays devil's advocate to stress-test your arguments
+- **💡 Simplify** — Explains complex passages in plain language
+- **🛡️ Steelman** — Strengthens the best version of your argument
+- **🤔 Socratic** — Asks probing questions to deepen your reasoning
+- **🔗 Connect** — Finds hidden connections between two ideas in your paper
+
+### Citations Panel
+Structured evidence results with source titles, findings, verdict (supported/challenged/mixed), and one-click citation insertion in APA/MLA/Chicago formats.
+
+### Claim Tracker
+Automatically identifies claims in your document and tracks which are supported, challenged, or unverified.
+
+### Argument Map
+Visual D3-based graph showing the logical structure of your argument — claims, evidence, and counterarguments.
+
+### Research Question Wizard
+A Socratic conversation that helps you refine a vague topic into a sharp, researchable question before you start writing.
+
+### Audio Transcription
+Upload interview or lecture recordings for automatic transcription (via Deepgram) with AI-powered claim extraction and source recommendations.
+
+### Writing Quality Analysis
+Per-section metrics for clarity, specificity, and argument strength.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | Python, FastAPI, Uvicorn |
+| **AI** | Anthropic Claude, OpenAI, Google Gemini (multi-provider fallback) |
+| **Transcription** | Deepgram |
+| **Frontend** | React 18, TypeScript, Vite, TailwindCSS |
+| **Visualization** | D3.js |
+| **Export** | docx (Word), file-saver |
+| **Storage** | localStorage (client-side) |
+
+---
+
+## Project Structure
 
 ```
-MidLayer-Exp/
-  apps/
-    api/        # TypeScript Express API (sandbox, RFCs, indexing, docs)
-    web/        # Vite + React UI (Docs, Specs, Runbooks, Graph)
-  packages/
-    shared/     # Shared types and small utilities
-  .env.example
-  package.json  # npm workspaces
+synapse/
+├── app/
+│   ├── main.py              # FastAPI backend — all AI endpoints
+│   ├── agent_service.py     # Agent delegation logic
+│   ├── github_service.py    # GitHub integration
+│   └── slack_service.py     # Slack integration
+├── web/
+│   ├── src/
+│   │   ├── ui/
+│   │   │   ├── DocumentEditor.tsx   # Main editor with agent toolbar
+│   │   │   ├── HomePage.tsx         # Dashboard & research wizard
+│   │   │   ├── AIChatSidebar.tsx    # AI chat panel
+│   │   │   ├── CitationsPanel.tsx   # Evidence & citations
+│   │   │   ├── ClaimTracker.tsx     # Claim verification tracker
+│   │   │   ├── ArgumentMap.tsx      # Visual argument graph
+│   │   │   ├── TranscriptionPanel.tsx
+│   │   │   └── SelectionToolbar.tsx # Agent selection on highlight
+│   │   └── services/
+│   │       └── documentService.ts   # Document CRUD (localStorage)
+│   ├── package.json
+│   └── vite.config.ts
+├── requirements.txt
+└── .env
 ```
-
-### MVP Capabilities
-- Run sandboxed JavaScript code blocks and capture outputs.
-- Generate RFC drafts via OpenAI (optional; degrades gracefully when not configured).
-- Serve OpenAPI files through Swagger UI.
-- Index a local repo path to build a lightweight knowledge graph in SQLite.
-- Simple React UI to interact with the API (execute code, generate RFCs, view OpenAPI docs link).
-
-### Roadmap to Full Vision
-- Add GraphQL/protobuf ingestion and doc gen.
-- Add dependency graph via static analysis (tree-sitter, TS/Go/Python analyzers).
-- Enrich knowledge graph with entities (Services, Modules, APIs, Teams, Incidents).
-- Build drift detection between ADRs/specs and implementation.
-- Add Runbooks DSL with guarded execution and environment policies.
-- Observability connectors (Datadog, Grafana, CloudWatch) and chat (Slack).
-- Vector search and embeddings for code + docs.
 
 ---
 
 ## Getting Started
 
-1) Prerequisites
+### Prerequisites
+- Python 3.10+
 - Node.js 18+
 
-2) Setup
+### 1. Backend Setup
 ```bash
-npm install
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-3) Run dev servers (API + Web)
+### 2. Configure Environment
 ```bash
+cp .env_sample .env
+# Add your API keys:
+#   ANTHROPIC_API_KEY=...
+#   OPENAI_API_KEY=...       (optional fallback)
+#   DEEPGRAM_API_KEY=...     (optional, for transcription)
+```
+
+### 3. Start Backend
+```bash
+source venv/bin/activate
+uvicorn app.main:app --port 4000 --reload
+```
+
+### 4. Start Frontend
+```bash
+cd web
+npm install
 npm run dev
 ```
 
-4) Configure OpenAI (optional for RFC generation)
-```bash
-cp .env.example .env
-# edit .env and set OPENAI_API_KEY
-```
+Open **http://localhost:5173** in your browser.
 
 ---
 
-## Security Notes
-- The code sandbox executes only JavaScript via `vm2` with strict timeouts and memory caps; treat outputs as untrusted. Do not elevate privileges or pass host access.
-- Runbook execution is disabled by default for safety and should be enabled only in controlled environments.
-
----
+## Team
+Built at **TreeHacks 2026** at Stanford University.
 
 ## License
-Apache-2.0 (placeholder, update as needed)
+MIT
 
