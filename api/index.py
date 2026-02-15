@@ -122,16 +122,25 @@ def api_verify(req: VerifyRequest):
         raise HTTPException(status_code=400, detail="Claim is empty")
 
     def event_stream():
-        for event in run_verification_pipeline(req.claim):
-            yield event.to_sse()
+        try:
+            for event in run_verification_pipeline(req.claim):
+                sse = event.to_sse()
+                print(f"[Vercel SSE] {event.type}")
+                yield sse
+        except Exception as e:
+            import traceback
+            print(f"[Vercel SSE ERROR] {e}\n{traceback.format_exc()}")
+            error_event = VerificationEvent("error", {"message": str(e)})
+            yield error_event.to_sse()
 
     return StreamingResponse(
         event_stream(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         },
     )
 
