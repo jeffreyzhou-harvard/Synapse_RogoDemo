@@ -81,6 +81,30 @@ def health():
         "default_model": os.getenv("DEFAULT_MODEL", "(not set)"),
     }
 
+@app.get("/api/test-llm")
+def test_llm():
+    """Quick test: call Claude with a trivial prompt and return timing."""
+    import time
+    t0 = time.time()
+    try:
+        from anthropic import Anthropic
+        key = os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            return {"error": "ANTHROPIC_API_KEY not set", "duration_ms": 0}
+        client = Anthropic(api_key=key)
+        model = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
+        resp = client.messages.create(
+            model=model,
+            max_tokens=50,
+            messages=[{"role": "user", "content": "Say 'hello' in one word."}],
+        )
+        text = resp.content[0].text
+        ms = int((time.time() - t0) * 1000)
+        return {"status": "ok", "model": model, "response": text, "duration_ms": ms}
+    except Exception as e:
+        ms = int((time.time() - t0) * 1000)
+        return {"status": "error", "error": str(e), "duration_ms": ms}
+
 @app.post("/api/ingest", response_model=IngestResponse)
 def api_ingest(req: IngestRequest):
     if req.url:
