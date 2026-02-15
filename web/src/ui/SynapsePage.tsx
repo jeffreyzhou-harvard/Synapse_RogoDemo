@@ -162,6 +162,7 @@ const SynapsePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'provenance' | 'correction'>('subclaims');
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
+  const [verdictExpanded, setVerdictExpanded] = useState(false);
 
   // Share state
   const [shareToast, setShareToast] = useState('');
@@ -375,6 +376,7 @@ const SynapsePage: React.FC = () => {
     if (!claim) return;
 
     setSelectedClaimId(claimId);
+    setVerdictExpanded(false);
 
     // Initialize agent pipeline — extract already done, decompose starts
     setAgentChips(INITIAL_PIPELINE.map(c => ({
@@ -1154,26 +1156,40 @@ const SynapsePage: React.FC = () => {
                 {v.overallVerdict ? (() => {
                   const vc = VERDICT_COLORS[v.overallVerdict!.verdict] || VERDICT_COLORS.unsupported;
                   return (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: '14px', padding: '12px 16px',
-                      borderRadius: '10px', border: `1px solid ${vc.border}`, backgroundColor: vc.bg,
-                      boxShadow: `0 0 20px ${vc.glow}`, animation: 'verdictPop 0.4s ease',
-                    }}>
-                      <span style={{
-                        fontSize: '20px', fontWeight: 900, color: vc.text, textTransform: 'uppercase',
-                        letterSpacing: '1.5px',
-                      }}>
-                        {v.overallVerdict!.verdict.replace('_', ' ')}
-                      </span>
-                      <span style={{
-                        fontSize: '10px', fontWeight: 700, color: '#888888', textTransform: 'uppercase',
-                        padding: '2px 8px', borderRadius: '4px', border: '1px solid #333333',
-                      }}>
-                        {v.overallVerdict!.confidence}
-                      </span>
-                      <span style={{ fontSize: '12px', color: '#cccccc', flex: 1 }}>
-                        {v.overallVerdict!.summary.length > 120 ? v.overallVerdict!.summary.slice(0, 120) + '...' : v.overallVerdict!.summary}
-                      </span>
+                    <div
+                      onClick={() => setVerdictExpanded(!verdictExpanded)}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '10px', border: `1px solid ${vc.border}`, backgroundColor: vc.bg,
+                        boxShadow: `0 0 20px ${vc.glow}`, animation: 'verdictPop 0.4s ease',
+                        cursor: 'pointer', transition: 'all 0.2s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <span style={{
+                          fontSize: '20px', fontWeight: 900, color: vc.text, textTransform: 'uppercase',
+                          letterSpacing: '1.5px', flexShrink: 0,
+                        }}>
+                          {v.overallVerdict!.verdict.replace('_', ' ')}
+                        </span>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, color: '#888888', textTransform: 'uppercase',
+                          padding: '2px 8px', borderRadius: '4px', border: '1px solid #333333', flexShrink: 0,
+                        }}>
+                          {v.overallVerdict!.confidence}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#cccccc', flex: 1 }}>
+                          {!verdictExpanded && v.overallVerdict!.summary.length > 120
+                            ? v.overallVerdict!.summary.slice(0, 120) + '...'
+                            : v.overallVerdict!.summary}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#555', flexShrink: 0, transition: 'transform 0.2s', transform: verdictExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                      </div>
+                      {verdictExpanded && v.overallVerdict!.detail && (
+                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${vc.border}`, fontSize: '12px', color: '#aaaaaa', lineHeight: 1.6, animation: 'fadeIn 0.2s ease' }}>
+                          {v.overallVerdict!.detail}
+                        </div>
+                      )}
                     </div>
                   );
                 })() : (
@@ -1469,11 +1485,17 @@ const SynapsePage: React.FC = () => {
                   <div style={{ animation: 'fadeIn 0.2s ease' }}>
                     {v.provenanceNodes.length > 0 ? (
                       <>
+                        {/* Section header */}
+                        <div style={{ padding: '12px 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>Claim Origin Timeline</span>
+                          <div style={{ flex: 1, height: '1px', background: '#1a1a1a' }} />
+                          <span style={{ fontSize: '10px', color: '#444' }}>{v.provenanceNodes.length} sources traced</span>
+                        </div>
                         {/* Horizontal provenance tree */}
                         <div style={{
-                          overflowX: 'auto', overflowY: 'hidden', padding: '20px 0',
-                          display: 'flex', alignItems: 'center', gap: '0',
-                          minHeight: '180px',
+                          overflowX: 'auto', overflowY: 'hidden', padding: '28px 12px 20px',
+                          display: 'flex', alignItems: 'stretch', gap: '0',
+                          minHeight: '240px',
                         }}>
                           {v.provenanceNodes.map((node, i) => {
                             const mutColor = MUTATION_COLORS[node.mutation_severity] || '#94a3b8';
@@ -1485,38 +1507,39 @@ const SynapsePage: React.FC = () => {
                             return (
                               <React.Fragment key={node.id}>
                                 <div style={{
-                                  flexShrink: 0, width: '200px', padding: '14px',
-                                  borderRadius: '10px', border: `1px solid ${mutColor}40`,
-                                  backgroundColor: '#0a0a0a',
-                                  boxShadow: `0 0 12px ${mutColor}15`,
+                                  flexShrink: 0, width: '280px', padding: '16px 18px',
+                                  borderRadius: '12px', border: `1px solid ${mutColor}50`,
+                                  backgroundColor: '#080808',
+                                  boxShadow: `0 0 20px ${mutColor}20, inset 0 1px 0 ${mutColor}10`,
                                   animation: `slideInH 0.4s ease ${i * 0.15}s both`,
                                   position: 'relative',
+                                  display: 'flex', flexDirection: 'column',
                                 }}>
                                   {/* Glow dot */}
                                   <div style={{
-                                    position: 'absolute', top: '-5px', left: '50%', transform: 'translateX(-50%)',
-                                    width: '10px', height: '10px', borderRadius: '50%',
+                                    position: 'absolute', top: '-6px', left: '50%', transform: 'translateX(-50%)',
+                                    width: '12px', height: '12px', borderRadius: '50%',
                                     backgroundColor: mutColor, border: '2px solid #000000',
-                                    boxShadow: `0 0 8px ${mutColor}60`,
+                                    boxShadow: `0 0 12px ${mutColor}80`,
                                   }} />
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
-                                    <span style={{ fontSize: '14px' }}>{sourceIcons[node.source_type] || '📋'}</span>
-                                    <span style={{ fontSize: '9px', fontWeight: 700, color: mutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                                    <span style={{ fontSize: '16px' }}>{sourceIcons[node.source_type] || '📋'}</span>
+                                    <span style={{ fontSize: '11px', fontWeight: 800, color: mutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                       {node.source_type}
                                     </span>
-                                    {node.date && <span style={{ fontSize: '9px', color: '#555555', marginLeft: 'auto' }}>{node.date}</span>}
+                                    {node.date && <span style={{ fontSize: '11px', color: '#555555', marginLeft: 'auto', fontWeight: 600 }}>{node.date}</span>}
                                   </div>
-                                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#888888', marginBottom: '4px' }}>
+                                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#999999', marginBottom: '6px', lineHeight: 1.4 }}>
                                     {node.source_name}
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#cccccc', lineHeight: 1.45, fontStyle: 'italic' }}>
-                                    "{node.text.length > 100 ? node.text.slice(0, 100) + '...' : node.text}"
+                                  <div style={{ fontSize: '13px', color: '#dddddd', lineHeight: 1.55, fontStyle: 'italic', flex: 1 }}>
+                                    "{node.text.length > 140 ? node.text.slice(0, 140) + '...' : node.text}"
                                   </div>
                                   {node.mutation_severity !== 'none' && (
                                     <div style={{
-                                      marginTop: '6px', fontSize: '9px', fontWeight: 700, color: mutColor,
-                                      padding: '2px 6px', borderRadius: '3px', backgroundColor: `${mutColor}15`,
-                                      display: 'inline-block',
+                                      marginTop: '10px', fontSize: '10px', fontWeight: 700, color: mutColor,
+                                      padding: '3px 8px', borderRadius: '4px', backgroundColor: `${mutColor}15`,
+                                      display: 'inline-block', border: `1px solid ${mutColor}30`,
                                     }}>
                                       {node.mutation_severity} mutation
                                     </div>
@@ -1525,18 +1548,18 @@ const SynapsePage: React.FC = () => {
                                 {/* Connecting arrow */}
                                 {i < v.provenanceNodes.length - 1 && (
                                   <div style={{
-                                    flexShrink: 0, width: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0, width: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     animation: `fadeIn 0.3s ease ${i * 0.15 + 0.1}s both`,
                                   }}>
-                                    <svg width="40" height="20" viewBox="0 0 40 20">
+                                    <svg width="48" height="24" viewBox="0 0 48 24">
                                       <defs>
                                         <linearGradient id={`grad-${i}`} x1="0%" y1="0%" x2="100%" y2="0%">
                                           <stop offset="0%" stopColor={mutColor} />
                                           <stop offset="100%" stopColor={nextColor} />
                                         </linearGradient>
                                       </defs>
-                                      <line x1="0" y1="10" x2="30" y2="10" stroke={`url(#grad-${i})`} strokeWidth="2" />
-                                      <polygon points="30,5 40,10 30,15" fill={nextColor} />
+                                      <line x1="0" y1="12" x2="36" y2="12" stroke={`url(#grad-${i})`} strokeWidth="2.5" />
+                                      <polygon points="36,6 48,12 36,18" fill={nextColor} opacity="0.9" />
                                     </svg>
                                   </div>
                                 )}
@@ -1547,9 +1570,9 @@ const SynapsePage: React.FC = () => {
                         {/* Analysis */}
                         {v.provenanceAnalysis && (
                           <div style={{
-                            marginTop: '12px', padding: '12px 14px', borderRadius: '8px',
-                            backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
-                            fontSize: '12px', color: '#888888', lineHeight: 1.6,
+                            marginTop: '8px', padding: '14px 16px', borderRadius: '10px',
+                            backgroundColor: '#080808', border: '1px solid #1a1a1a',
+                            fontSize: '13px', color: '#999999', lineHeight: 1.65,
                           }}>
                             <span style={{ fontWeight: 700, color: '#ffffff', marginRight: '6px' }}>Analysis:</span>
                             {v.provenanceAnalysis}
