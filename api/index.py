@@ -72,7 +72,14 @@ _reports_store = {}
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "synapse"}
+    import os
+    return {
+        "status": "ok",
+        "service": "synapse",
+        "has_anthropic_key": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "has_perplexity_key": bool(os.getenv("PERPLEXITY_API_KEY")),
+        "default_model": os.getenv("DEFAULT_MODEL", "(not set)"),
+    }
 
 @app.post("/api/ingest", response_model=IngestResponse)
 def api_ingest(req: IngestRequest):
@@ -94,7 +101,11 @@ def api_ingest(req: IngestRequest):
 def api_extract_claims(req: ExtractClaimsRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text is empty")
-    raw_claims = extract_claims(req.text)
+    try:
+        raw_claims = extract_claims(req.text)
+    except Exception as e:
+        print(f"[Vercel] extract_claims error: {e}")
+        raise HTTPException(status_code=500, detail=f"Claim extraction failed: {str(e)}")
     claims = []
     for i, c in enumerate(raw_claims):
         claims.append(ClaimItem(
