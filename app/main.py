@@ -13,7 +13,7 @@ import re
 from multiprocessing import Process, Queue
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import networkx as nx
@@ -34,6 +34,14 @@ try:
     from anthropic import Anthropic  # type: ignore
 except Exception:  # pragma: no cover
     Anthropic = None  # type: ignore
+
+try:
+    from deepgram import DeepgramClient, PrerecordedOptions  # type: ignore
+except Exception:  # pragma: no cover
+    DeepgramClient = None  # type: ignore
+    PrerecordedOptions = None  # type: ignore
+
+import httpx
 
 
 # Load .env from project root explicitly (robust for different CWDs)
@@ -675,7 +683,7 @@ def _call_claude(prompt: str, system_prompt: str = "", max_tokens: int = 4000) -
         messages = [{"role": "user", "content": prompt}]
         
         response = client.messages.create(
-            model=os.getenv("DEFAULT_MODEL", "claude-3-5-sonnet-20241022"),
+            model=os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=max_tokens,
             temperature=float(os.getenv("TEMPERATURE", "0.7")),
             system=system_prompt if system_prompt else "You are a helpful AI assistant.",
@@ -699,7 +707,7 @@ def _call_gemini(prompt: str, system_prompt: str = "", max_tokens: int = 4000) -
         # Combine system prompt and user prompt for Gemini
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
         
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         response = model.generate_content(
             full_prompt,
             generation_config=genai.types.GenerationConfig(
@@ -737,20 +745,33 @@ def _call_ai_with_fallback(prompt: str, system_prompt: str = "", max_tokens: int
             services.append(("Claude", _call_claude))
     
     # Try each service in order
-    last_error = None
+    errors = []
     for service_name, service_func in services:
         try:
             return service_func(prompt, system_prompt, max_tokens)
         except Exception as e:
-            print(f"[AI Fallback] {service_name} failed: {str(e)}")
-            last_error = e
+            error_msg = str(e)
+            # Extract a short, user-friendly message
+            if "credit balance is too low" in error_msg:
+                short_msg = f"{service_name}: API credits exhausted — add billing"
+            elif "exceeded your current quota" in error_msg or "429" in error_msg:
+                short_msg = f"{service_name}: Rate limit / quota exceeded — wait or upgrade"
+            elif "invalid_api_key" in error_msg or "401" in error_msg:
+                short_msg = f"{service_name}: Invalid API key"
+            elif "not_found_error" in error_msg or "404" in error_msg:
+                short_msg = f"{service_name}: Model not found — check model name"
+            else:
+                short_msg = f"{service_name}: {error_msg[:120]}"
+            print(f"[AI Fallback] {service_name} failed: {error_msg}")
+            errors.append(short_msg)
             continue
     
-    # If all services fail, raise the last error
-    if last_error:
-        raise HTTPException(status_code=503, detail=f"All AI services failed. Last error: {str(last_error)}")
+    # If all services fail, raise with clear summary
+    if errors:
+        summary = " | ".join(errors)
+        raise HTTPException(status_code=503, detail=f"All AI services failed — {summary}")
     else:
-        raise HTTPException(status_code=503, detail="No AI services available")
+        raise HTTPException(status_code=503, detail="No AI services configured. Add ANTHROPIC_API_KEY or GOOGLE_API_KEY to .env")
 
 
 def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:
@@ -835,114 +856,109 @@ def plan(req: PlanRequest) -> PlanResponse:
     if anthropic_key and Anthropic is not None:
         try:
             # Use Claude Sonnet for planning
-            full_prompt = f"""BUSINESS-TO-TECHNICAL TRANSLATION TASK (FREEFORM FRIENDLY):
+            full_prompt = f"""LEARNING PLAN GENERATION TASK:
 
 Use freeform if present; otherwise use fields.
 Freeform: {req.freeform}
-Business Use Case: {req.goal}
-Success Metrics: {req.notes}
-Technical Constraints: {req.context}
+Learning Goal: {req.goal}
+Additional Notes: {req.notes}
+Context: {req.context}
 
-Your mission: Transform this business requirement into executable technical deliverables.
+Your mission: Transform this learning goal into a structured, progressive study plan.
 
-THINK LIKE A SENIOR PM + TECH LEAD:
-1. Break down the business use case into user stories
-2. Identify the technical architecture needed
-3. Create specific, executable tasks spanning:
-   - Backend APIs & database design
-   - Frontend components & user experience
-   - Integration points & data flows
-   - Testing, deployment, and monitoring
-   - Documentation and stakeholder communication
+THINK LIKE AN EXPERT TUTOR + CURRICULUM DESIGNER:
+1. Break the learning goal into logical modules/topics
+2. Identify prerequisites and dependencies between topics  
+3. Create specific, achievable learning modules spanning:
+   - Foundational concepts (FOUNDATION-X)
+   - Core theory and principles (CORE-X)
+   - Hands-on practice exercises (PRACTICE-X)
+   - Applied projects and case studies (PROJECT-X)
+   - Assessment and review (REVIEW-X)
 
 Return a JSON object with this structure:
 {{
-  "goal": "Refined technical goal based on business use case",
+  "goal": "Structured learning path for the subject",
   "tasks": [
     {{
-      "id": "API-1",
-      "title": "Design user authentication API",
-      "description": "Create REST endpoints for login/signup with JWT tokens, input validation, and rate limiting",
-      "estimate": "3d",
+      "id": "FOUNDATION-1",
+      "title": "Understand the basic terminology and history",
+      "description": "Learn the fundamental vocabulary, key historical developments, and why this subject matters. Start with the big picture before diving into details.",
+      "estimate": "2h",
       "dependencies": [],
+      "priority": "P0",
+      "reach": 100,
+      "impact": 5.0,
+      "confidence": 5.0,
+      "effort": 2,
+      "customerImpactScore": 9.0,
+      "revenueImpact": 0,
+      "retentionImpact": 0,
+      "satisfactionImpact": 0,
+      "adoptionImpact": 100,
+      "successMetrics": ["concept_understanding", "vocabulary_mastery"]
+    }},
+    {{
+      "id": "CORE-1",
+      "title": "Master the first key principle",
+      "description": "Deep dive into the first major concept with examples, analogies, and visual explanations.",
+      "estimate": "3h",
+      "dependencies": ["FOUNDATION-1"],
       "priority": "P1",
-      "reach": 10000,
+      "reach": 100,
       "impact": 4.5,
       "confidence": 4.0,
-      "effort": 24,
-      "customerImpactScore": 8.5,
-      "revenueImpact": 50.0,
-      "retentionImpact": 15.0,
-      "satisfactionImpact": 12.0,
-      "adoptionImpact": 75.0,
-      "successMetrics": ["conversion_rate", "time_to_value", "user_engagement"]
+      "effort": 3,
+      "customerImpactScore": 8.0,
+      "revenueImpact": 0,
+      "retentionImpact": 0,
+      "satisfactionImpact": 0,
+      "adoptionImpact": 90,
+      "successMetrics": ["principle_application", "problem_solving"]
     }},
     {{
-      "id": "DB-1", 
-      "title": "Design user and order tracking database schema",
-      "description": "Create tables for users, orders, tracking_events with proper indexing and relationships",
-      "estimate": "2d",
-      "dependencies": [],
+      "id": "PRACTICE-1",
+      "title": "Hands-on exercise: Apply the first principle",
+      "description": "Work through guided practice problems that reinforce the concept. Start simple and progressively increase difficulty.",
+      "estimate": "2h",
+      "dependencies": ["CORE-1"],
       "priority": "P1",
-      "reach": 10000,
-      "impact": 4.0,
-      "confidence": 4.5,
-      "effort": 16,
-      "customerImpactScore": 7.0,
-      "revenueImpact": 25.0,
-      "retentionImpact": 8.0,
-      "satisfactionImpact": 25.0,
-      "adoptionImpact": 60.0,
-      "successMetrics": ["data_accuracy", "system_reliability"]
-    }},
-    {{
-      "id": "FE-1",
-      "title": "Build order tracking dashboard component",
-      "description": "React component showing real-time order status with progress indicator and estimated delivery",
-      "estimate": "4d", 
-      "dependencies": ["API-1", "DB-1"],
-      "priority": "P1",
-      "reach": 8000,
-      "impact": 4.5,
-      "confidence": 3.5,
-      "effort": 32,
-      "customerImpactScore": 9.0,
-      "revenueImpact": 75.0,
-      "retentionImpact": 20.0,
-      "satisfactionImpact": 25.0,
-      "adoptionImpact": 60.0,
-      "successMetrics": ["customer_satisfaction", "support_ticket_reduction", "user_retention"]
+      "reach": 100,
+      "impact": 5.0,
+      "confidence": 4.0,
+      "effort": 2,
+      "customerImpactScore": 9.5,
+      "revenueImpact": 0,
+      "retentionImpact": 0,
+      "satisfactionImpact": 0,
+      "adoptionImpact": 85,
+      "successMetrics": ["exercise_completion", "accuracy_rate"]
     }}
   ],
-  "notes": "Generated technical implementation plan from business requirements"
+  "notes": "AI-generated learning path - study modules ordered by prerequisite dependencies"
 }}
 
-TASK CATEGORIES TO INCLUDE:
-- API/Backend services (API-X)
-- Database design (DB-X) 
-- Frontend components (FE-X)
-- Integration work (INT-X)
-- Testing & QA (TEST-X)
-- DevOps & deployment (DEPLOY-X)
-- Documentation (DOC-X)
+MODULE CATEGORIES TO INCLUDE:
+- Foundation / Prerequisites (FOUNDATION-X): Key terminology, history, motivation
+- Core Concepts (CORE-X): Main theories, principles, frameworks
+- Practice / Exercises (PRACTICE-X): Hands-on problems, coding exercises, worksheets
+- Projects / Applications (PROJECT-X): Real-world applications, case studies
+- Review / Assessment (REVIEW-X): Self-tests, knowledge checks, synthesis
 
-Generate 10-15 specific technical tasks that would deliver the business value described or implied by the freeform notes. Make each task:
-- Executable by a developer
-- Clearly scoped with specific deliverables
-- Properly estimated and prioritized
-- Connected to business impact
+Generate 8-12 learning modules that build progressively. Make each module:
+- Achievable by a student in one sitting
+- Clearly building on previous modules
+- Including specific learning objectives
+- Estimated in hours of study time
 
-CRITICAL: For each task, estimate customer success metrics based on the business use case:
-- customerImpactScore: 1-10 scale of direct customer benefit
-- revenueImpact: Expected revenue impact in thousands ($K)
-- retentionImpact: Percentage improvement in customer retention
-- satisfactionImpact: Expected NPS/CSAT improvement (1-50 scale)
-- adoptionImpact: Percentage of users who will use this feature (0-100)
-- successMetrics: Array of specific KPIs this task improves (e.g., ["conversion_rate", "churn_reduction"])
+CRITICAL: Structure the learning path so that:
+- Foundation modules come first with no dependencies
+- Each module builds on specific prerequisites
+- Practice follows theory
+- There's a mix of reading, doing, and testing
+- The path ends with synthesis/review modules"""
 
-These metrics should directly connect to the success metrics provided in the business case."""
-
-            system_prompt = system + "\n\nYou are an expert technical product manager and software architect. Return ONLY valid JSON with no additional text or formatting."
+            system_prompt = system + "\n\nYou are an expert educational curriculum designer and tutor. Create learning plans that are progressive, engaging, and pedagogically sound. Return ONLY valid JSON with no additional text or formatting."
             
             content = _call_claude(full_prompt, system_prompt, max_tokens=4000)
             print(f"DEBUG: Claude response: {content}")
@@ -1008,6 +1024,219 @@ These metrics should directly connect to the success metrics provided in the bus
         return PlanResponse(goal=goal, tasks=mapped_tasks, critical_path=list(cp), notes=notes)
     except Exception:
         return heuristic_plan(req.goal)
+
+
+# ── Research Question Refinement ──────────────────────────────────────────────
+
+class RefineQuestionRequest(BaseModel):
+    topic: str
+    conversation: List[Dict[str, str]] = []  # [{"role":"user"|"ai","text":"..."}]
+
+class RefineQuestionResponse(BaseModel):
+    question: Optional[str] = None   # refined research question (when ready)
+    follow_up: Optional[str] = None  # Socratic follow-up question (when still refining)
+    is_complete: bool = False
+
+@app.post("/refine-question", response_model=RefineQuestionResponse)
+def refine_question(req: RefineQuestionRequest) -> RefineQuestionResponse:
+    """Socratic dialogue to refine a rough topic into a specific research question."""
+
+    history = ""
+    for msg in req.conversation:
+        role = "Student" if msg.get("role") == "user" else "Advisor"
+        history += f"{role}: {msg.get('text', '')}\n"
+
+    turn_count = len([m for m in req.conversation if m.get("role") == "user"])
+
+    if turn_count >= 3:
+        # Enough dialogue — synthesize a refined research question
+        prompt = f"""You are a research advisor helping a student refine their topic into a strong research question.
+
+TOPIC: {req.topic}
+
+CONVERSATION SO FAR:
+{history}
+
+Based on this dialogue, synthesize ONE specific, focused, and defensible research question for the student.
+
+Rules:
+- Return ONLY the research question itself, nothing else
+- It should be a single sentence ending with a question mark
+- It should be specific enough to be answerable in a research paper
+- It should reflect the narrowing that happened in the conversation"""
+
+        system = "You output exactly one research question. No preamble, no explanation."
+        try:
+            rq = _call_ai_with_fallback(prompt, system, max_tokens=200)
+            rq = rq.strip().strip('"').strip("'")
+            return RefineQuestionResponse(question=rq, is_complete=True)
+        except Exception:
+            return RefineQuestionResponse(
+                question=f"How does {req.topic} impact society?",
+                is_complete=True,
+            )
+    else:
+        # Ask a Socratic follow-up
+        prompt = f"""You are a research advisor helping a student narrow a broad topic into a focused research question.
+
+TOPIC: {req.topic}
+
+CONVERSATION SO FAR:
+{history}
+
+Ask ONE short, probing Socratic question (1-2 sentences) that helps the student:
+- Narrow their scope
+- Identify a specific angle, population, or context
+- Think about what's debatable or measurable
+
+This is question {turn_count + 1} of 3.
+{"Focus on narrowing the scope." if turn_count == 0 else ""}
+{"Focus on identifying the specific angle or argument." if turn_count == 1 else ""}
+{"Focus on making it researchable and debatable." if turn_count == 2 else ""}
+
+Return ONLY the question. No preamble."""
+
+        system = "You are a Socratic research advisor. Ask one focused question to help narrow a research topic. No preamble."
+        try:
+            follow_up = _call_ai_with_fallback(prompt, system, max_tokens=200)
+            return RefineQuestionResponse(follow_up=follow_up.strip(), is_complete=False)
+        except Exception:
+            fallback_qs = [
+                f"What specific aspect of {req.topic} are you most interested in exploring?",
+                "What population, time period, or geographic context would you focus on?",
+                "What's the debatable claim you want to investigate?"
+            ]
+            return RefineQuestionResponse(
+                follow_up=fallback_qs[min(turn_count, len(fallback_qs) - 1)],
+                is_complete=False,
+            )
+
+
+# ── Research Paper Generation ─────────────────────────────────────────────────
+
+class GeneratePaperRequest(BaseModel):
+    topic: str
+    style: str = "academic"  # academic, argumentative, literature-review, expository
+
+class GeneratePaperResponse(BaseModel):
+    title: str
+    content: str  # full paper body in plain text / light markdown
+
+
+@app.post("/generate-paper", response_model=GeneratePaperResponse)
+def generate_paper(req: GeneratePaperRequest) -> GeneratePaperResponse:
+    """Generate a paper FORMAT — section headings and short guidance notes only. No written content."""
+
+    style_hints = {
+        "academic": "a formal academic research paper (Abstract → Introduction → Literature Review → Methodology → Results → Discussion → Conclusion → References)",
+        "argumentative": "an argumentative research paper (Introduction with thesis → Supporting Arguments → Counter-arguments → Rebuttal → Conclusion → References)",
+        "literature-review": "a literature review paper (Introduction → Thematic sections surveying existing research → Gap Analysis → Future Directions → References)",
+        "expository": "an expository research paper (Introduction → Background / Definitions → Analysis sections → Implications → Conclusion → References)",
+    }
+    style_desc = style_hints.get(req.style, style_hints["academic"])
+
+    prompt = f"""Create ONLY the section headings for {style_desc} on this topic:
+
+TOPIC: {req.topic}
+
+RULES:
+1. First line: a specific, compelling paper title.
+2. Then list every section and sub-section heading, one per line.
+3. Use indentation (two spaces) for sub-headings under a parent section.
+4. Do NOT include any descriptions, instructions, guidance notes, brackets, or body text — ONLY the heading names.
+5. Do NOT use asterisks, pound signs, or any markdown formatting.
+6. End with a References heading.
+
+Example output:
+The Rise of Remote Work: Productivity, Well-Being, and Organizational Culture
+
+Abstract
+Introduction
+Literature Review
+  Remote Work and Productivity
+  Employee Well-Being
+  Organizational Culture Shifts
+Methodology
+Results
+  Quantitative Findings
+  Qualitative Themes
+Discussion
+Conclusion
+References"""
+
+    system_prompt = "You output ONLY section heading names for research papers. No descriptions, no instructions, no formatting symbols. Just clean heading text, one per line."
+
+    try:
+        raw = _call_ai_with_fallback(prompt, system_prompt, max_tokens=800)
+
+        # Clean up: strip any markdown/asterisks/brackets the model may have added
+        lines = raw.strip().split('\n')
+        cleaned_lines: list[str] = []
+        title = req.topic
+        found_title = False
+
+        for line in lines:
+            # Strip markdown formatting
+            cleaned = line.replace('**', '').replace('*', '').replace('# ', '').replace('#', '')
+            # Remove bracketed instructions like [Write your...]
+            cleaned = re.sub(r'\[.*?\]', '', cleaned)
+            # Remove leading dashes/bullets
+            cleaned = re.sub(r'^[\-•]\s*', '', cleaned)
+            cleaned = cleaned.rstrip()
+
+            if not cleaned.strip():
+                cleaned_lines.append('')
+                continue
+
+            # First non-empty line is the title
+            if not found_title:
+                title = cleaned.strip()
+                found_title = True
+                continue
+
+            cleaned_lines.append(cleaned)
+
+        # Build body: add blank lines between top-level headings for readability
+        body_lines: list[str] = []
+        for line in cleaned_lines:
+            stripped = line.strip()
+            if stripped and not line.startswith('  '):
+                # Top-level heading — add a blank line before it (unless start)
+                if body_lines and body_lines[-1] != '':
+                    body_lines.append('')
+                body_lines.append(stripped)
+            elif stripped:
+                # Sub-heading (indented)
+                body_lines.append('  ' + stripped)
+            else:
+                if body_lines and body_lines[-1] != '':
+                    body_lines.append('')
+
+        body = '\n'.join(body_lines).strip()
+        if not body:
+            body = raw.strip()
+
+        return GeneratePaperResponse(title=title, content=body)
+
+    except Exception as e:
+        fallback_title = f"{req.topic}"
+        fallback_body = """Abstract
+
+Introduction
+
+Literature Review
+
+Methodology
+
+Results
+
+Discussion
+
+Conclusion
+
+References"""
+
+        return GeneratePaperResponse(title=fallback_title, content=fallback_body)
 
 
 class PrioritizeRequest(BaseModel):
@@ -1091,6 +1320,372 @@ def prioritize(req: PrioritizeRequest) -> List[PrioritizedTask]:
     scored = [PrioritizedTask(**t.model_dump(), score=float(scoring(t))) for t in req.tasks]
     scored.sort(key=lambda x: x.score, reverse=True)
     return scored
+
+
+# ─────────────────────────────────────────
+# LEARNING ENDPOINTS
+# ─────────────────────────────────────────
+
+class QuizRequest(BaseModel):
+    topic: str
+    num_questions: int = 5
+    difficulty: str = "medium"  # easy, medium, hard
+
+
+class QuizQuestion(BaseModel):
+    question: str
+    options: List[str]
+    correct_index: int
+    explanation: str
+
+
+class QuizResponse(BaseModel):
+    topic: str
+    questions: List[QuizQuestion]
+
+
+@app.post("/generate-quiz", response_model=QuizResponse)
+def generate_quiz(req: QuizRequest) -> QuizResponse:
+    """Generate a quiz on a given topic using AI."""
+    prompt = f"""Generate a quiz with exactly {req.num_questions} multiple-choice questions about: {req.topic}
+Difficulty level: {req.difficulty}
+
+Return ONLY a JSON object with this exact structure:
+{{
+  "topic": "{req.topic}",
+  "questions": [
+    {{
+      "question": "What is...?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_index": 0,
+      "explanation": "The correct answer is A because..."
+    }}
+  ]
+}}
+
+Make the questions educational and thought-provoking, not just rote memorization.
+Include explanations that teach the student WHY the answer is correct.
+Each question MUST have exactly 4 options.
+correct_index is 0-based (0=first option, 1=second, etc.)."""
+
+    system_prompt = "You are an expert educator creating engaging quiz questions. Return ONLY valid JSON."
+    
+    try:
+        content = _call_ai_with_fallback(prompt, system_prompt, max_tokens=4000)
+        data = _try_parse_json(content)
+        if data and "questions" in data:
+            questions = []
+            for q in data["questions"][:req.num_questions]:
+                questions.append(QuizQuestion(
+                    question=q.get("question", ""),
+                    options=q.get("options", ["A", "B", "C", "D"]),
+                    correct_index=int(q.get("correct_index", 0)),
+                    explanation=q.get("explanation", "")
+                ))
+            return QuizResponse(topic=req.topic, questions=questions)
+    except Exception as e:
+        print(f"Quiz generation error: {e}")
+    
+    # Fallback: return a basic quiz
+    return QuizResponse(topic=req.topic, questions=[
+        QuizQuestion(
+            question=f"What is the most fundamental concept in {req.topic}?",
+            options=["Core principles", "Advanced theory", "Historical context", "Practical applications"],
+            correct_index=0,
+            explanation="Understanding core principles is the foundation for learning any subject."
+        )
+    ])
+
+
+class ExplainRequest(BaseModel):
+    concept: str
+    depth: str = "detailed"  # brief, detailed, expert
+
+
+class ExplainResponse(BaseModel):
+    concept: str
+    explanation: str
+
+
+@app.post("/explain-concept", response_model=ExplainResponse)
+def explain_concept(req: ExplainRequest) -> ExplainResponse:
+    """Generate a detailed AI explanation of a concept."""
+    depth_instructions = {
+        "brief": "Give a concise 2-3 paragraph explanation suitable for a quick overview.",
+        "detailed": "Give a thorough explanation with examples, analogies, and key takeaways. Use clear sections.",
+        "expert": "Give an in-depth expert-level explanation covering theory, edge cases, and advanced connections."
+    }
+    
+    prompt = f"""Explain the following concept/topic: {req.concept}
+
+{depth_instructions.get(req.depth, depth_instructions["detailed"])}
+
+Structure your explanation with:
+1. **What it is** - Clear definition in simple terms
+2. **Why it matters** - Real-world relevance and applications
+3. **How it works** - Step-by-step breakdown with examples
+4. **Key takeaways** - The most important things to remember
+5. **Common misconceptions** - What students often get wrong
+
+Use analogies to make abstract concepts concrete. Write as if you're an enthusiastic tutor explaining to a curious student."""
+
+    system_prompt = "You are an expert tutor who excels at making complex topics accessible and engaging. Explain concepts clearly with examples and analogies."
+    
+    try:
+        content = _call_ai_with_fallback(prompt, system_prompt, max_tokens=4000)
+        return ExplainResponse(concept=req.concept, explanation=content)
+    except Exception as e:
+        return ExplainResponse(
+            concept=req.concept,
+            explanation=f"I'd be happy to explain {req.concept}, but I'm having trouble connecting to the AI service right now. Please try again in a moment."
+        )
+
+
+class LearningProgressResponse(BaseModel):
+    total_modules: int
+    completed_modules: int
+    progress_percent: float
+    topics_covered: List[str]
+    suggested_next: Optional[str] = None
+
+
+@app.get("/learning-progress", response_model=LearningProgressResponse)
+def get_learning_progress() -> LearningProgressResponse:
+    """Get current learning progress from the knowledge graph."""
+    task_nodes = [n for n in knowledge_graph.nodes.values() if n.type == "task"]
+    completed = [n for n in task_nodes if n.properties.get("status") == "completed"]
+    
+    total = len(task_nodes)
+    completed_count = len(completed)
+    progress = (completed_count / total * 100) if total > 0 else 0
+    
+    topics = [n.name for n in completed]
+    
+    # Find next suggested module (first pending with satisfied dependencies)
+    pending = [n for n in task_nodes if n.properties.get("status") != "completed"]
+    suggested = pending[0].name if pending else None
+    
+    return LearningProgressResponse(
+        total_modules=total,
+        completed_modules=completed_count,
+        progress_percent=round(progress, 1),
+        topics_covered=topics,
+        suggested_next=suggested
+    )
+
+
+class InlineAIRequest(BaseModel):
+    action: str
+    selected_text: str
+    selected_text_2: str = ""  # For "connect" agent — second highlighted block
+    document_context: str = ""
+
+class InlineAIResponse(BaseModel):
+    action: str
+    selected_text: str
+    result: str
+
+# ── Specialized Agent Definitions ──────────────────────────────────────────────
+# Each agent has a distinct system prompt, user prompt template, and pedagogical
+# purpose.  This is NOT "one model doing everything generically" — each agent is
+# tuned for a specific cognitive task.
+
+AGENTS = {
+    "evidence": {
+        "system": (
+            "You are a Research Agent embedded in a student's notes. Your job is to "
+            "find evidence — supporting AND contradicting — for the claim or idea the "
+            "student highlighted. Always cite where the evidence comes from (field, "
+            "study, author, year if you can). Be balanced. The student should walk "
+            "away knowing what the evidence actually says, not just what supports "
+            "their view. You MUST return valid JSON — no markdown, no extra text."
+        ),
+        "template": """The student highlighted the following text and asked you to FIND EVIDENCE for it.
+
+HIGHLIGHTED TEXT:
+\"\"\"{selected_text}\"\"\"
+
+{context}
+
+You MUST return ONLY valid JSON in this exact format (no markdown fences, no extra text):
+{{
+  "claim": "restate the core claim in one sentence",
+  "verdict": "well-supported" | "debated" | "mixed" | "weak" | "unsupported",
+  "sources": [
+    {{
+      "title": "short descriptive title of the finding",
+      "finding": "what the evidence says in 1-2 sentences",
+      "source": "Author(s), Year — Journal/Book/Field",
+      "type": "supporting" | "contradicting" | "complicating",
+      "relevance": "high" | "medium" | "low"
+    }}
+  ],
+  "next_steps": ["specific thing to search for 1", "specific thing to search for 2"]
+}}
+
+Return 4-6 sources. Be specific with citations. Return ONLY the JSON object.""",
+    },
+
+    "challenge": {
+        "system": (
+            "You are a Devil's Advocate Agent. Your purpose is to make the student's "
+            "thinking STRONGER by attacking it. You are not hostile — you are the "
+            "intellectual sparring partner every student needs. Find logical gaps, "
+            "unstated assumptions, counterexamples, and the strongest objections. "
+            "The student should feel intellectually challenged, not criticized."
+        ),
+        "template": """The student highlighted the following text and asked you to CHALLENGE IT.
+
+HIGHLIGHTED TEXT:
+\"\"\"{selected_text}\"\"\"
+
+{context}
+
+Return your response in this exact structure:
+
+**Assumptions you're making:** (list 2-3 unstated assumptions in this text)
+
+**Strongest counterargument:** (the single best objection — make it sharp)
+
+**Logical gaps:** (any reasoning leaps, missing evidence, or weak links)
+
+**What about...** (a concrete counterexample or edge case that complicates this)
+
+**If you're right, then...** (follow the logic to its conclusions — does it still hold up?)""",
+    },
+
+    "eli5": {
+        "system": (
+            "You are a Simplification Agent. Your job is to strip away jargon and "
+            "make the idea accessible without losing accuracy. Use analogies from "
+            "everyday life. If a 12-year-old couldn't understand your explanation, "
+            "try again. But never dumb it down so far that it becomes wrong."
+        ),
+        "template": """The student highlighted the following text and asked you to EXPLAIN IT SIMPLY.
+
+HIGHLIGHTED TEXT:
+\"\"\"{selected_text}\"\"\"
+
+{context}
+
+Return your response in this exact structure:
+
+**In plain English:** (2-3 sentences, no jargon)
+
+**Analogy:** (an everyday analogy that captures the core idea)
+
+**The key thing to remember:** (one sentence — the takeaway)
+
+**Where this gets more complex:** (one sentence hinting at the deeper layer — so the student knows there's more to explore)""",
+    },
+
+    "steelman": {
+        "system": (
+            "You are a Steelman Agent. Your job is to take the student's idea and "
+            "make it as strong as possible. Find the best version of their argument. "
+            "Add nuance they missed, evidence they could cite, framing that makes it "
+            "more compelling. You are their intellectual ally making sure they put "
+            "their best thinking forward."
+        ),
+        "template": """The student highlighted the following text and asked you to STEELMAN IT — make the argument as strong as possible.
+
+HIGHLIGHTED TEXT:
+\"\"\"{selected_text}\"\"\"
+
+{context}
+
+Return your response in this exact structure:
+
+**Strongest version of this argument:** (rewrite the core claim with more precision and force)
+
+**Evidence to add:** (2-3 pieces of supporting evidence or data the student should include)
+
+**Better framing:** (how to frame this more compellingly — what angle is most persuasive?)
+
+**Anticipate objections:** (the top objection, and how the steelmanned version handles it)""",
+    },
+
+    "socratic": {
+        "system": (
+            "You are a Socratic Agent. You NEVER give answers. You ONLY ask questions. "
+            "Your questions should guide the student to discover insights themselves. "
+            "Start with what they said, then probe assumptions, implications, and "
+            "connections they haven't made yet. This is the most important agent — "
+            "it's the one that makes Synapse a thinking partner, not a homework machine."
+        ),
+        "template": """The student highlighted the following text. Your job is to ask questions that make them THINK DEEPER — do NOT give answers.
+
+HIGHLIGHTED TEXT:
+\"\"\"{selected_text}\"\"\"
+
+{context}
+
+Return ONLY questions. 5 questions, ordered from concrete to abstract:
+
+1. (A clarification question — what exactly do they mean?)
+2. (An assumption question — what are they taking for granted?)
+3. (An evidence question — how do they know this is true?)
+4. (A connection question — how does this relate to something else they should know?)
+5. (An implication question — if this is true, what follows? what changes?)""",
+    },
+
+    "connect": {
+        "system": (
+            "You are a Connection Agent. The student highlighted TWO separate pieces "
+            "of text and wants you to analyze the relationship between them. Find "
+            "hidden connections, tensions, shared assumptions, causal links, or "
+            "surprising parallels. This is the agent that only works in a canvas-first "
+            "tool — it's your superpower."
+        ),
+        "template": """The student highlighted TWO separate blocks of text and wants you to analyze the CONNECTION between them.
+
+BLOCK 1:
+\"\"\"{selected_text}\"\"\"
+
+BLOCK 2:
+\"\"\"{selected_text_2}\"\"\"
+
+{context}
+
+Return your response in this exact structure:
+
+**The connection:** (one sentence — what's the relationship between these two ideas?)
+
+**How they reinforce each other:** (if they're aligned — what does each add to the other?)
+
+**Where they tension:** (if they conflict — what's the disagreement, and why does it matter?)
+
+**The synthesis:** (what new insight emerges when you hold both ideas together?)
+
+**Question to explore:** (one question the student should think about based on this connection)""",
+    },
+}
+
+
+@app.post("/inline-ai", response_model=InlineAIResponse)
+def inline_ai(req: InlineAIRequest) -> InlineAIResponse:
+    """Dispatch to a specialized agent based on the action type."""
+    agent = AGENTS.get(req.action)
+    if not agent:
+        # Fallback for any unknown action
+        agent = AGENTS["eli5"]
+
+    context_line = f"Document context (for reference only): {req.document_context[:600]}" if req.document_context else ""
+    prompt = agent["template"].format(
+        selected_text=req.selected_text,
+        selected_text_2=req.selected_text_2 or "(not provided)",
+        context=context_line,
+    )
+
+    try:
+        content = _call_ai_with_fallback(prompt, agent["system"], max_tokens=3000)
+        return InlineAIResponse(action=req.action, selected_text=req.selected_text, result=content)
+    except Exception as e:
+        return InlineAIResponse(
+            action=req.action,
+            selected_text=req.selected_text,
+            result=f"Agent '{req.action}' encountered an error: {str(e)}",
+        )
 
 
 class RefineRequest(BaseModel):
@@ -2529,6 +3124,324 @@ async def handle_slack_kg_suggestions(graph_id: str, user: Dict, channel: Dict):
     """Background task: Apply knowledge graph reassignment suggestions"""
     # Apply suggestions from knowledge graph
     pass
+
+# ── PDF Reference Ingestion ───────────────────────────────────────────────────
+
+class PDFExtractResponse(BaseModel):
+    filename: str
+    text: str
+    page_count: int
+    summary: Optional[str] = None
+    key_findings: Optional[List[str]] = None
+    suggested_citations: Optional[List[Dict[str, str]]] = None
+
+
+@app.post("/extract-pdf", response_model=PDFExtractResponse)
+async def extract_pdf(file: UploadFile = File(...)):
+    """Extract text from a PDF and identify key findings for citation."""
+    try:
+        import pdfplumber
+    except ImportError:
+        raise HTTPException(status_code=503, detail="pdfplumber not installed")
+
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Please upload a PDF file.")
+
+    file_bytes = await file.read()
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(file_bytes) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Max 100 MB.")
+
+    # Extract text
+    try:
+        pdf_text = ""
+        page_count = 0
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            page_count = len(pdf.pages)
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    pdf_text += page_text + "\n\n"
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read PDF: {str(e)[:200]}")
+
+    if not pdf_text.strip():
+        return PDFExtractResponse(
+            filename=file.filename or "unknown.pdf",
+            text="(No text could be extracted from this PDF.)",
+            page_count=page_count,
+        )
+
+    # Analyze the PDF for key findings
+    summary = None
+    key_findings = None
+    suggested_citations = None
+
+    try:
+        analysis_prompt = f"""Analyze this academic paper/document and extract key information for citation purposes.
+
+TEXT (first 6000 chars):
+\"\"\"
+{pdf_text[:6000]}
+\"\"\"
+
+Return ONLY valid JSON:
+{{
+  "summary": "2-3 sentence summary of the paper",
+  "key_findings": ["finding 1", "finding 2", "finding 3"],
+  "suggested_citations": [
+    {{
+      "claim": "a specific citable claim from the paper",
+      "page_context": "roughly where in the paper this appears",
+      "citation_text": "formatted as: Author(s), Year. Title. Venue."
+    }}
+  ]
+}}
+
+Extract 3-5 key findings and 2-4 citable claims. Return ONLY JSON."""
+
+        raw = _call_ai_with_fallback(analysis_prompt, "You extract key findings from academic papers for citation. Return only valid JSON.", max_tokens=2000)
+
+        parsed = None
+        try:
+            cleaned = raw.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned)
+        except Exception:
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                except Exception:
+                    pass
+
+        if parsed:
+            summary = parsed.get("summary")
+            key_findings = parsed.get("key_findings")
+            suggested_citations = parsed.get("suggested_citations")
+
+    except Exception as e:
+        print(f"[PDF] AI analysis failed: {e}")
+
+    return PDFExtractResponse(
+        filename=file.filename or "unknown.pdf",
+        text=pdf_text[:50000],  # cap at 50k chars
+        page_count=page_count,
+        summary=summary,
+        key_findings=key_findings,
+        suggested_citations=suggested_citations,
+    )
+
+
+# ── Transcription (Deepgram) ──────────────────────────────────────────────────
+
+class TranscriptionResponse(BaseModel):
+    transcript: str
+    duration: Optional[float] = None
+    confidence: Optional[float] = None
+    speakers: Optional[List[Dict[str, Any]]] = None
+    paragraphs: Optional[List[str]] = None
+
+class TranscribeAnalyzeResponse(BaseModel):
+    transcript: str
+    duration: Optional[float] = None
+    confidence: Optional[float] = None
+    speakers: Optional[List[Dict[str, Any]]] = None
+    paragraphs: Optional[List[str]] = None
+    analysis: Optional[str] = None  # raw AI analysis text
+    claims: Optional[List[Dict[str, Any]]] = None  # structured claim objects
+    error: Optional[str] = None
+
+
+@app.post("/transcribe", response_model=TranscribeAnalyzeResponse)
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    Accept an audio/video file, transcribe it via Deepgram, then analyse the
+    transcript for verifiable claims and suggest citations.
+    """
+    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+    if not deepgram_key:
+        raise HTTPException(status_code=503, detail="Deepgram API not configured. Set DEEPGRAM_API_KEY in .env")
+
+    # Validate file type
+    allowed_types = {
+        "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave",
+        "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/ogg", "audio/webm",
+        "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+        "application/octet-stream",  # fallback for unknown types
+    }
+    content_type = file.content_type or "application/octet-stream"
+    # Allow any audio/* or video/* even if not explicitly listed
+    if not (content_type in allowed_types or content_type.startswith("audio/") or content_type.startswith("video/")):
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {content_type}. Upload an audio or video file.")
+
+    # Read the uploaded file
+    file_bytes = await file.read()
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(file_bytes) > 500 * 1024 * 1024:  # 500 MB limit
+        raise HTTPException(status_code=400, detail="File too large. Max 500 MB.")
+
+    # ── Step 1: Transcribe with Deepgram ──
+    try:
+        # Use Deepgram REST API directly with httpx for reliability
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(
+                "https://api.deepgram.com/v1/listen",
+                headers={
+                    "Authorization": f"Token {deepgram_key}",
+                    "Content-Type": content_type,
+                },
+                params={
+                    "model": "nova-3",
+                    "smart_format": "true",
+                    "paragraphs": "true",
+                    "diarize": "true",
+                    "punctuate": "true",
+                    "utterances": "true",
+                },
+                content=file_bytes,
+            )
+
+        if resp.status_code != 200:
+            detail = resp.text[:500]
+            raise HTTPException(status_code=502, detail=f"Deepgram API error ({resp.status_code}): {detail}")
+
+        dg_result = resp.json()
+
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Deepgram transcription timed out. Try a shorter recording.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Deepgram transcription failed: {str(e)[:300]}")
+
+    # ── Parse Deepgram response ──
+    channels = dg_result.get("results", {}).get("channels", [])
+    if not channels:
+        raise HTTPException(status_code=502, detail="Deepgram returned no results.")
+
+    alt = channels[0].get("alternatives", [{}])[0]
+    transcript_text = alt.get("transcript", "")
+    confidence = alt.get("confidence")
+    duration_val = dg_result.get("metadata", {}).get("duration")
+
+    # Extract paragraphs if available
+    paragraphs_data = alt.get("paragraphs", {}).get("paragraphs", [])
+    paragraphs_list: List[str] = []
+    speakers_info: List[Dict[str, Any]] = []
+
+    if paragraphs_data:
+        for para in paragraphs_data:
+            speaker = para.get("speaker", None)
+            sentences = para.get("sentences", [])
+            text = " ".join(s.get("text", "") for s in sentences).strip()
+            if text:
+                prefix = f"Speaker {speaker}: " if speaker is not None else ""
+                paragraphs_list.append(f"{prefix}{text}")
+                if speaker is not None:
+                    # Track unique speakers
+                    if not any(sp["id"] == speaker for sp in speakers_info):
+                        speakers_info.append({"id": speaker, "label": f"Speaker {speaker}"})
+    else:
+        # Fallback: split transcript into paragraphs on double newlines
+        paragraphs_list = [p.strip() for p in transcript_text.split("\n\n") if p.strip()]
+
+    if not transcript_text.strip():
+        return TranscribeAnalyzeResponse(
+            transcript="(No speech detected in the recording.)",
+            duration=duration_val,
+            confidence=confidence,
+            speakers=speakers_info or None,
+            paragraphs=paragraphs_list or None,
+            error="No speech was detected. Make sure the recording contains audible speech."
+        )
+
+    # ── Step 2: Analyse transcript for claims & citation recommendations ──
+    analysis_text = None
+    claims_list = None
+
+    try:
+        analysis_prompt = f"""You are a research assistant helping a student verify claims from an expert interview or meeting recording.
+
+Below is a transcript of a recorded meeting/interview. Your job is to:
+1. Identify the key claims, assertions, or factual statements made by the speakers.
+2. For each claim, assess whether it is verifiable and suggest specific academic sources or types of evidence that could support or challenge it.
+3. Return your analysis as valid JSON (no markdown fences, no extra text).
+
+TRANSCRIPT:
+\"\"\"
+{transcript_text[:8000]}
+\"\"\"
+
+Return ONLY valid JSON in this exact format:
+{{
+  "summary": "2-3 sentence summary of what the interview/meeting covered",
+  "claims": [
+    {{
+      "claim": "the specific claim or assertion made",
+      "speaker": "Speaker 0 or Speaker 1 or Unknown",
+      "timestamp_context": "rough context of when this was said",
+      "verifiability": "high" | "medium" | "low",
+      "suggested_sources": [
+        {{
+          "type": "journal article" | "book" | "dataset" | "government report" | "news source",
+          "description": "what to search for to verify this claim",
+          "search_query": "a specific search query the student could use"
+        }}
+      ],
+      "recommendation": "brief advice on how to cite or verify this point"
+    }}
+  ],
+  "overall_credibility": "strong" | "moderate" | "weak" | "mixed",
+  "next_steps": ["specific action 1", "specific action 2"]
+}}
+
+Return 3-8 claims. Focus on the most important, citable assertions. Return ONLY the JSON object."""
+
+        analysis_system = "You are a meticulous research assistant that helps students verify claims from expert interviews and meetings. You identify verifiable assertions and suggest specific academic sources. Always return valid JSON."
+
+        raw_analysis = _call_ai_with_fallback(analysis_prompt, analysis_system, max_tokens=4000)
+        analysis_text = raw_analysis
+
+        # Try to parse structured claims
+        parsed = None
+        try:
+            cleaned = raw_analysis.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned)
+        except Exception:
+            json_match = re.search(r'\{[\s\S]*\}', raw_analysis)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                except Exception:
+                    pass
+
+        if parsed and "claims" in parsed:
+            claims_list = parsed["claims"]
+            # Attach summary and overall info to each claim for frontend convenience
+            for c in claims_list:
+                c.setdefault("verifiability", "medium")
+                c.setdefault("suggested_sources", [])
+                c.setdefault("recommendation", "")
+            # Add summary as metadata
+            if parsed.get("summary"):
+                analysis_text = parsed["summary"]
+
+    except Exception as e:
+        print(f"[Transcribe] AI analysis failed: {e}")
+        # Non-fatal: we still return the transcript
+
+    return TranscribeAnalyzeResponse(
+        transcript=transcript_text,
+        duration=duration_val,
+        confidence=confidence,
+        speakers=speakers_info or None,
+        paragraphs=paragraphs_list or None,
+        analysis=analysis_text,
+        claims=claims_list,
+    )
+
 
 @app.get("/slack/status")
 def slack_status():
