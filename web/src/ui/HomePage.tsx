@@ -153,14 +153,25 @@ const HomePage: React.FC = () => {
           />
         </div>
 
-        <button onClick={() => navigate('/editor')}
-          style={{ backgroundColor: '#1a202c', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background-color 0.15s' }}
-          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#2d3748'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1a202c'; }}
-        >
-          <Icon name="plus" size={14} color="white" />
-          New document
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={() => navigate('/editor?split=true')}
+            style={{ backgroundColor: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '7px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#9ca3af'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+            title="Open editor with source material side-by-side"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="12" y1="3" x2="12" y2="21" /></svg>
+            Split view
+          </button>
+          <button onClick={() => navigate('/editor')}
+            style={{ backgroundColor: '#1a202c', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background-color 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#2d3748'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1a202c'; }}
+          >
+            <Icon name="plus" size={14} color="white" />
+            New document
+          </button>
+        </div>
       </header>
 
       {/* Main content */}

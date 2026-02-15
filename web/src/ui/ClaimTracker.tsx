@@ -41,7 +41,7 @@ function extractClaims(content: string): TrackedClaim[] {
     const sentences = section.text
       .split(/(?<=[.!?])\s+/)
       .map(s => s.trim())
-      .filter(s => s.length > 30); // ignore very short fragments
+      .filter(s => s.length > 10); // ignore very short fragments
 
     for (const sentence of sentences) {
       // Check if it has a footnote marker [N]

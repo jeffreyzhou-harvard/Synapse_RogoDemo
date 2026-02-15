@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 
-export type SelectionAction = 'evidence' | 'challenge' | 'eli5' | 'steelman' | 'socratic' | 'connect';
+export type SelectionAction = 'evidence' | 'challenge' | 'eli5' | 'steelman' | 'socratic' | 'connect' | 'deep-dive';
 
 interface AgentDef {
   id: SelectionAction;
@@ -18,6 +18,7 @@ const AGENTS: AgentDef[] = [
   { id: 'steelman',  label: 'Steelman',      shortLabel: 'Steelman', icon: '🛡️',  description: 'Make this argument stronger',              color: '#48bb78' },
   { id: 'socratic',  label: 'Ask Me',        shortLabel: 'Ask Me',   icon: '🤔', description: 'Socratic questions — no answers, just Qs', color: '#9f7aea' },
   { id: 'connect',   label: 'Connect',       shortLabel: 'Connect',  icon: '🔗', description: 'Analyze relationship between two blocks',  color: '#ed8936' },
+  { id: 'deep-dive', label: 'Deep Dive',     shortLabel: 'Deep Dive', icon: '🔬', description: 'Multi-step research — papers, gaps, synthesis', color: '#7c3aed' },
 ];
 
 interface SelectionToolbarProps {

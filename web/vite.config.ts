@@ -36,7 +36,11 @@ export default defineConfig({
       '/generate-paper': 'http://localhost:4000',
       '/transcribe': 'http://localhost:4000',
       '/extract-pdf': 'http://localhost:4000',
-      '/refine-question': 'http://localhost:4000'
+      '/refine-question': 'http://localhost:4000',
+      '/deep-dive/next-steps': 'http://localhost:4000',
+      '/deep-dive': 'http://localhost:4000',
+      '/semantic-search': 'http://localhost:4000',
+      '/vector': 'http://localhost:4000'
     }
   },
   resolve: {

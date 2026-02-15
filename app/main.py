@@ -1662,6 +1662,38 @@ Return your response in this exact structure:
 }
 
 
+def _sonar_search(query: str) -> str:
+    """Call Perplexity Sonar API synchronously for grounded evidence with real citations."""
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if not api_key:
+        return ""
+    try:
+        resp = httpx.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "You are a research fact-checker. Provide specific evidence with citations for the given claim. Include URLs where possible."},
+                    {"role": "user", "content": f"Find evidence for and against this claim: {query}"},
+                ],
+                "return_citations": True,
+            },
+            timeout=15.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            citations = data.get("citations", [])
+            citation_text = "\n".join(f"  [{i+1}] {url}" for i, url in enumerate(citations[:8]))
+            result = f"{answer}\n\nSources:\n{citation_text}" if citation_text else answer
+            print(f"[Sonar] Evidence search returned {len(citations)} citations")
+            return result
+    except Exception as e:
+        print(f"[Sonar] Evidence search failed: {e}")
+    return ""
+
+
 @app.post("/inline-ai", response_model=InlineAIResponse)
 def inline_ai(req: InlineAIRequest) -> InlineAIResponse:
     """Dispatch to a specialized agent based on the action type."""
@@ -1671,10 +1703,18 @@ def inline_ai(req: InlineAIRequest) -> InlineAIResponse:
         agent = AGENTS["eli5"]
 
     context_line = f"Document context (for reference only): {req.document_context[:600]}" if req.document_context else ""
+
+    # For evidence agent: pre-search with Perplexity Sonar for grounded citations
+    sonar_context = ""
+    if req.action == "evidence":
+        sonar_result = _sonar_search(req.selected_text[:500])
+        if sonar_result:
+            sonar_context = f"\n\nGROUNDED EVIDENCE FROM WEB SEARCH (Perplexity Sonar — use these real sources in your response, include the URLs):\n{sonar_result}\n"
+
     prompt = agent["template"].format(
         selected_text=req.selected_text,
         selected_text_2=req.selected_text_2 or "(not provided)",
-        context=context_line,
+        context=context_line + sonar_context,
     )
 
     try:
@@ -3127,18 +3167,26 @@ async def handle_slack_kg_suggestions(graph_id: str, user: Dict, channel: Dict):
 
 # ── PDF Reference Ingestion ───────────────────────────────────────────────────
 
+class ResearchDirection(BaseModel):
+    title: str
+    description: str
+    agent_action: str  # 'evidence' | 'challenge' | 'connect' | 'socratic' | 'steelman' | 'eli5'
+    query: str  # the pre-filled query to send to the agent
+
 class PDFExtractResponse(BaseModel):
     filename: str
     text: str
     page_count: int
+    title: Optional[str] = None
+    authors: Optional[str] = None
     summary: Optional[str] = None
-    key_findings: Optional[List[str]] = None
-    suggested_citations: Optional[List[Dict[str, str]]] = None
+    key_claims: Optional[List[str]] = None
+    research_directions: Optional[List[ResearchDirection]] = None
 
 
 @app.post("/extract-pdf", response_model=PDFExtractResponse)
 async def extract_pdf(file: UploadFile = File(...)):
-    """Extract text from a PDF and identify key findings for citation."""
+    """Extract text from a PDF and generate AI-powered research directions."""
     try:
         import pdfplumber
     except ImportError:
@@ -3153,7 +3201,7 @@ async def extract_pdf(file: UploadFile = File(...)):
     if len(file_bytes) > 100 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 100 MB.")
 
-    # Extract text
+    # Extract text (simple — we don't need perfect formatting since AI reads it)
     try:
         pdf_text = ""
         page_count = 0
@@ -3173,35 +3221,60 @@ async def extract_pdf(file: UploadFile = File(...)):
             page_count=page_count,
         )
 
-    # Analyze the PDF for key findings
+    # AI analysis: understand the document and generate research directions
+    title = None
+    authors = None
     summary = None
-    key_findings = None
-    suggested_citations = None
+    key_claims = None
+    research_directions = None
 
     try:
-        analysis_prompt = f"""Analyze this academic paper/document and extract key information for citation purposes.
+        analysis_prompt = f"""You are a research assistant helping a student understand an academic paper and plan their next research steps.
 
-TEXT (first 6000 chars):
+Read this document and return a JSON analysis.
+
+DOCUMENT TEXT (first 8000 chars):
 \"\"\"
-{pdf_text[:6000]}
+{pdf_text[:8000]}
 \"\"\"
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with this exact structure:
 {{
-  "summary": "2-3 sentence summary of the paper",
-  "key_findings": ["finding 1", "finding 2", "finding 3"],
-  "suggested_citations": [
+  "title": "the paper's title",
+  "authors": "author names as a single string",
+  "summary": "A clear 2-3 sentence summary of what this paper argues and finds. Write it so a student can quickly understand the paper's contribution.",
+  "key_claims": [
+    "A specific factual claim or finding from the paper that could be cited",
+    "Another specific claim...",
+    "Up to 5 claims"
+  ],
+  "research_directions": [
     {{
-      "claim": "a specific citable claim from the paper",
-      "page_context": "roughly where in the paper this appears",
-      "citation_text": "formatted as: Author(s), Year. Title. Venue."
+      "title": "Short action-oriented title (e.g. 'Find supporting evidence for the main thesis')",
+      "description": "1-2 sentences explaining what this research direction would explore and why it matters for the student's understanding",
+      "agent_action": "evidence",
+      "query": "The specific query to send to the AI agent — should be a well-formed research question based on the paper's content"
     }}
   ]
 }}
 
-Extract 3-5 key findings and 2-4 citable claims. Return ONLY JSON."""
+For research_directions, generate 4-6 diverse directions. Each must have an agent_action from this list:
+- "evidence" — find supporting or contradicting sources for a claim
+- "challenge" — identify weaknesses, counterarguments, or methodological issues
+- "connect" — find connections to other fields, theories, or the student's own work
+- "socratic" — ask probing questions that deepen understanding of the paper
+- "steelman" — strengthen the paper's argument or find the best version of its thesis
+- "eli5" — simplify a complex concept from the paper
 
-        raw = _call_ai_with_fallback(analysis_prompt, "You extract key findings from academic papers for citation. Return only valid JSON.", max_tokens=2000)
+Make the directions genuinely useful for a student who wants to THINK about this paper, not just summarize it. Each direction should lead to a different kind of intellectual work.
+
+Return ONLY valid JSON."""
+
+        raw = _call_ai_with_fallback(
+            analysis_prompt,
+            "You are a research assistant that analyzes academic papers and generates actionable research directions. Return only valid JSON.",
+            max_tokens=3000
+        )
 
         parsed = None
         try:
@@ -3216,20 +3289,33 @@ Extract 3-5 key findings and 2-4 citable claims. Return ONLY JSON."""
                     pass
 
         if parsed:
+            title = parsed.get("title")
+            authors = parsed.get("authors")
             summary = parsed.get("summary")
-            key_findings = parsed.get("key_findings")
-            suggested_citations = parsed.get("suggested_citations")
+            key_claims = parsed.get("key_claims")
+            raw_directions = parsed.get("research_directions", [])
+            research_directions = []
+            for d in raw_directions:
+                if isinstance(d, dict) and d.get("title") and d.get("agent_action"):
+                    research_directions.append(ResearchDirection(
+                        title=d["title"],
+                        description=d.get("description", ""),
+                        agent_action=d["agent_action"],
+                        query=d.get("query", d["title"]),
+                    ))
 
     except Exception as e:
         print(f"[PDF] AI analysis failed: {e}")
 
     return PDFExtractResponse(
         filename=file.filename or "unknown.pdf",
-        text=pdf_text[:50000],  # cap at 50k chars
+        text=pdf_text[:50000],
         page_count=page_count,
+        title=title,
+        authors=authors,
         summary=summary,
-        key_findings=key_findings,
-        suggested_citations=suggested_citations,
+        key_claims=key_claims,
+        research_directions=research_directions,
     )
 
 
@@ -3441,6 +3527,567 @@ Return 3-8 claims. Focus on the most important, citable assertions. Return ONLY 
         analysis=analysis_text,
         claims=claims_list,
     )
+
+
+# ── Transcript Analysis (post-lecture workflow) ───────────────────────────────
+
+class TranscriptAnalysisRequest(BaseModel):
+    transcript: str
+    title: Optional[str] = None
+    context: Optional[str] = None  # e.g. "This is a lecture on machine learning"
+
+class TranscriptAnalysisResponse(BaseModel):
+    title: Optional[str] = None
+    speaker: Optional[str] = None
+    summary: Optional[str] = None
+    key_claims: Optional[List[str]] = None
+    research_directions: Optional[List[ResearchDirection]] = None
+    topics: Optional[List[str]] = None
+
+
+@app.post("/analyze-transcript", response_model=TranscriptAnalysisResponse)
+async def analyze_transcript(req: TranscriptAnalysisRequest):
+    """Analyze a transcript and generate research directions — the post-lecture workflow."""
+    if not req.transcript.strip():
+        raise HTTPException(status_code=400, detail="Transcript is empty.")
+
+    transcript_snippet = req.transcript[:10000]
+    context_hint = f"\nContext provided by the student: {req.context}" if req.context else ""
+    title_hint = f"\nTitle: {req.title}" if req.title else ""
+
+    try:
+        prompt = f"""You are a research assistant helping a student deeply engage with a lecture or meeting recording.
+{title_hint}{context_hint}
+
+TRANSCRIPT (first 10000 chars):
+\"\"\"
+{transcript_snippet}
+\"\"\"
+
+Analyze this transcript and return ONLY valid JSON with this structure:
+{{
+  "title": "A descriptive title for this lecture/meeting (infer from content)",
+  "speaker": "The main speaker's name or role if identifiable, otherwise null",
+  "summary": "A clear 2-3 sentence summary of what was discussed. Write it so a student can quickly understand the key ideas covered.",
+  "key_claims": [
+    "A specific factual claim, assertion, or key point made during the lecture/meeting",
+    "Another specific claim — focus on statements that are verifiable or debatable",
+    "Up to 6 claims"
+  ],
+  "topics": ["topic1", "topic2", "topic3"],
+  "research_directions": [
+    {{
+      "title": "Short action-oriented title",
+      "description": "1-2 sentences explaining what this research direction explores and why it matters",
+      "agent_action": "evidence",
+      "query": "A well-formed research question based on the transcript content"
+    }}
+  ]
+}}
+
+For research_directions, generate 4-6 diverse directions using these agent_action types:
+- "evidence" — find academic sources supporting or contradicting a claim from the lecture
+- "challenge" — identify weaknesses or counterarguments to what was said
+- "connect" — find connections to other fields, theories, or the student's prior knowledge
+- "socratic" — ask probing questions that deepen understanding of a concept discussed
+- "steelman" — strengthen an argument made in the lecture
+- "eli5" — simplify a complex concept that was discussed
+
+Think about what a curious student would want to explore AFTER attending this lecture. The directions should help them go from passive listening to active understanding.
+
+Return ONLY valid JSON."""
+
+        raw = _call_ai_with_fallback(
+            prompt,
+            "You are a research assistant that analyzes lecture and meeting transcripts to help students engage deeply with the material. Return only valid JSON.",
+            max_tokens=3000
+        )
+
+        parsed = None
+        try:
+            cleaned = raw.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned)
+        except Exception:
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                except Exception:
+                    pass
+
+        if parsed:
+            directions = []
+            for d in parsed.get("research_directions", []):
+                if isinstance(d, dict) and d.get("title") and d.get("agent_action"):
+                    directions.append(ResearchDirection(
+                        title=d["title"],
+                        description=d.get("description", ""),
+                        agent_action=d["agent_action"],
+                        query=d.get("query", d["title"]),
+                    ))
+
+            return TranscriptAnalysisResponse(
+                title=parsed.get("title"),
+                speaker=parsed.get("speaker"),
+                summary=parsed.get("summary"),
+                key_claims=parsed.get("key_claims"),
+                research_directions=directions or None,
+                topics=parsed.get("topics"),
+            )
+
+    except Exception as e:
+        print(f"[Transcript Analysis] AI analysis failed: {e}")
+
+    return TranscriptAnalysisResponse()
+
+
+# ── Cross-Transcript Synthesis ────────────────────────────────────────────────
+
+class SynthesisSource(BaseModel):
+    title: str
+    content: str  # transcript text (will be truncated)
+
+class SynthesisRequest(BaseModel):
+    sources: List[SynthesisSource]
+    focus: Optional[str] = None  # optional focus area
+
+class SynthesisTheme(BaseModel):
+    title: str
+    description: str
+    sources: List[str]  # which source titles contribute
+    agent_action: str
+    query: str
+
+class SynthesisResponse(BaseModel):
+    overview: Optional[str] = None
+    themes: Optional[List[SynthesisTheme]] = None
+    contradictions: Optional[List[str]] = None
+    knowledge_gaps: Optional[List[str]] = None
+    suggested_thesis: Optional[str] = None
+
+
+@app.post("/synthesize-sources", response_model=SynthesisResponse)
+async def synthesize_sources(req: SynthesisRequest):
+    """Find themes, contradictions, and connections across multiple transcripts/sources."""
+    if len(req.sources) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 sources to synthesize.")
+
+    # Build source summaries for the prompt (truncate each)
+    source_texts = ""
+    for i, src in enumerate(req.sources[:6]):  # max 6 sources
+        snippet = src.content[:4000]
+        source_texts += f"\n\n--- SOURCE {i+1}: \"{src.title}\" ---\n{snippet}\n"
+
+    focus_hint = f"\nThe student is particularly interested in: {req.focus}" if req.focus else ""
+
+    try:
+        prompt = f"""You are a research assistant helping a student synthesize knowledge across multiple lectures, interviews, or readings.
+{focus_hint}
+
+The student has imported these sources into their research workspace:
+{source_texts}
+
+Analyze ALL sources together and return ONLY valid JSON:
+{{
+  "overview": "A 2-3 sentence synthesis of what these sources collectively cover. Highlight the big picture that emerges from reading them together.",
+  "themes": [
+    {{
+      "title": "A cross-cutting theme that appears across multiple sources",
+      "description": "2-3 sentences explaining this theme and how different sources contribute to it",
+      "sources": ["Source Title 1", "Source Title 2"],
+      "agent_action": "connect",
+      "query": "A research question that explores this theme further"
+    }}
+  ],
+  "contradictions": [
+    "A specific point where sources disagree or present conflicting evidence"
+  ],
+  "knowledge_gaps": [
+    "Something important that NONE of the sources adequately address but that the student should investigate"
+  ],
+  "suggested_thesis": "A potential thesis statement or research question that could tie these sources together into a coherent argument"
+}}
+
+For themes, generate 3-5 cross-cutting themes. Each must have an agent_action from:
+- "evidence" — find more sources on this theme
+- "challenge" — examine tensions within this theme
+- "connect" — explore how this theme relates to other fields
+- "socratic" — deepen understanding of this theme
+- "steelman" — build the strongest version of an argument emerging from this theme
+
+For contradictions, identify 1-3 genuine disagreements or tensions between sources.
+For knowledge_gaps, identify 1-3 things the student should investigate that these sources don't cover.
+
+The goal is to help the student move from "I read these things" to "I understand how they fit together and what to do next."
+
+Return ONLY valid JSON."""
+
+        raw = _call_ai_with_fallback(
+            prompt,
+            "You are a research synthesis assistant that finds connections, contradictions, and gaps across multiple sources. Return only valid JSON.",
+            max_tokens=4000
+        )
+
+        parsed = None
+        try:
+            cleaned = raw.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned)
+        except Exception:
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                except Exception:
+                    pass
+
+        if parsed:
+            themes = []
+            for t in parsed.get("themes", []):
+                if isinstance(t, dict) and t.get("title"):
+                    themes.append(SynthesisTheme(
+                        title=t["title"],
+                        description=t.get("description", ""),
+                        sources=t.get("sources", []),
+                        agent_action=t.get("agent_action", "connect"),
+                        query=t.get("query", t["title"]),
+                    ))
+
+            return SynthesisResponse(
+                overview=parsed.get("overview"),
+                themes=themes or None,
+                contradictions=parsed.get("contradictions"),
+                knowledge_gaps=parsed.get("knowledge_gaps"),
+                suggested_thesis=parsed.get("suggested_thesis"),
+            )
+
+    except Exception as e:
+        print(f"[Synthesis] AI analysis failed: {e}")
+
+    return SynthesisResponse()
+
+
+# ── Vector Store & Semantic Search Pipeline ───────────────────────────────────
+# Architecture: Source Ingestion → Type-Specific Parser → Chunking → Embedding → Vector Store → Cosine Similarity
+from .vector_store import vector_store as _vector_store
+from .deep_dive_agent import DeepDiveAgent, TraceEvent, DeepDiveResult
+import asyncio
+from dataclasses import asdict
+
+class VectorIngestRequest(BaseModel):
+    workspace_id: str
+    sources: List[SynthesisSource]  # reuse: title + content
+    source_types: Optional[List[str]] = None  # parallel list of types per source
+
+class VectorIngestResponse(BaseModel):
+    ingested: int
+    total_chunks: int
+    embedded_chunks: int
+    embedding_provider: str
+    details: List[Dict[str, Any]]
+
+@app.post("/vector/ingest", response_model=VectorIngestResponse)
+async def vector_ingest(req: VectorIngestRequest):
+    """Ingest sources into the unified vector store.
+    
+    Pipeline: Source → Type-Specific Chunking → Embedding → Vector Store
+    Supports PDFs, transcripts, web articles, and plain text — all embedded
+    into a single queryable vector space.
+    """
+    details = []
+    for i, src in enumerate(req.sources):
+        src_type = "text"
+        if req.source_types and i < len(req.source_types):
+            src_type = req.source_types[i]
+        
+        source_id = f"src_{hash(src.title + src.content[:100]) & 0xFFFFFFFF:08x}"
+        result = _vector_store.ingest_source(
+            workspace_id=req.workspace_id,
+            source_id=source_id,
+            title=src.title,
+            content=src.content,
+            source_type=src_type,
+        )
+        details.append(result)
+    
+    stats = _vector_store.get_store_stats(req.workspace_id)
+    return VectorIngestResponse(
+        ingested=len(req.sources),
+        total_chunks=stats["total_chunks"],
+        embedded_chunks=stats["embedded_chunks"],
+        embedding_provider=stats["embedding_provider"],
+        details=details,
+    )
+
+
+class SemanticSearchRequest(BaseModel):
+    workspace_id: str
+    query: str
+    top_k: int = 10
+    threshold: float = 0.25
+    source_types: Optional[List[str]] = None  # filter by source type
+
+class SemanticSearchResult(BaseModel):
+    text: str
+    source_title: str
+    source_type: str
+    similarity: float
+    rank: int
+    chunk_index: int
+
+class SemanticSearchResponse(BaseModel):
+    results: List[SemanticSearchResult]
+    query: str
+    total_chunks_searched: int
+    embedding_provider: str
+    search_time_ms: int
+
+@app.post("/semantic-search", response_model=SemanticSearchResponse)
+async def semantic_search(req: SemanticSearchRequest):
+    """Real-time semantic search against the unified vector store.
+    
+    This is the core real-time matching pipeline:
+    1. Embed the query text using the same model as the stored chunks
+    2. Compute cosine similarity against every chunk in the store
+    3. Filter by threshold and optional source type
+    4. Return top-k results sorted by similarity
+    
+    Designed to run on every keystroke debounce (~2s) for live matching.
+    """
+    import time as _time
+    t0 = _time.time()
+    
+    search_results = _vector_store.search(
+        workspace_id=req.workspace_id,
+        query=req.query,
+        top_k=req.top_k,
+        threshold=req.threshold,
+        source_types=req.source_types,
+    )
+    
+    elapsed_ms = int((_time.time() - t0) * 1000)
+    stats = _vector_store.get_store_stats(req.workspace_id)
+    
+    return SemanticSearchResponse(
+        results=[
+            SemanticSearchResult(
+                text=sr.chunk.text[:500],
+                source_title=sr.chunk.source_title,
+                source_type=sr.chunk.source_type,
+                similarity=round(sr.similarity, 4),
+                rank=sr.rank,
+                chunk_index=sr.chunk.chunk_index,
+            )
+            for sr in search_results
+        ],
+        query=req.query,
+        total_chunks_searched=stats["total_chunks"],
+        embedding_provider=stats["embedding_provider"],
+        search_time_ms=elapsed_ms,
+    )
+
+
+@app.get("/vector/stats/{workspace_id}")
+async def vector_stats(workspace_id: str):
+    """Get vector store statistics for a workspace.
+    
+    Shows: total chunks, embedded chunks, chunks by source type,
+    embedding provider, dimension, and per-source details.
+    """
+    return _vector_store.get_store_stats(workspace_id)
+
+
+class VectorIngestRealtimeRequest(BaseModel):
+    workspace_id: str
+    source_id: str
+    title: str
+    text: str
+    source_type: str = "transcript"
+    chunk_index: int = 0
+
+@app.post("/vector/ingest-realtime")
+async def vector_ingest_realtime(req: VectorIngestRealtimeRequest):
+    """Ingest a single chunk in real-time (for streaming transcription).
+    
+    This endpoint is called as audio is transcribed — each chunk is
+    immediately embedded and added to the vector store, making it
+    searchable before the full transcript is complete.
+    """
+    chunk = _vector_store.ingest_chunk_realtime(
+        workspace_id=req.workspace_id,
+        source_id=req.source_id,
+        title=req.title,
+        text=req.text,
+        source_type=req.source_type,
+        chunk_index=req.chunk_index,
+    )
+    return {
+        "chunk_id": chunk.id if chunk else None,
+        "embedded": chunk.embedding is not None if chunk else False,
+        "word_count": chunk.word_count if chunk else 0,
+    }
+
+
+# ── Deep Dive Agent ───────────────────────────────────────────────────────────
+# Multi-step orchestration: Decompose → Parallel Search → Gap Detection → Backfill → Synthesis
+
+class DeepDiveRequest(BaseModel):
+    query: str
+    workspace_id: str = ""
+    document_context: str = ""
+
+class DeepDiveTraceEvent(BaseModel):
+    step: str
+    status: str
+    title: str
+    detail: str = ""
+    data: Dict[str, Any] = {}
+    duration_ms: int = 0
+
+class DeepDiveResponse(BaseModel):
+    query: str
+    sub_questions: List[str]
+    findings: List[Dict[str, Any]]
+    gaps: List[str]
+    synthesis: str
+    sources_searched: int
+    papers_found: int
+    trace: List[DeepDiveTraceEvent]
+    total_duration_ms: int
+
+@app.post("/deep-dive", response_model=DeepDiveResponse)
+async def deep_dive(req: DeepDiveRequest):
+    """Deep Dive Agent — multi-step research orchestration pipeline.
+    
+    Architecture:
+    1. DECOMPOSE: Break query into sub-questions using LLM
+    2. PARALLEL SEARCH: For each sub-question, simultaneously search:
+       - Semantic Scholar API (academic papers)
+       - Web search (broader results)
+       - Local vector store (user's own embedded sources)
+    3. GAP DETECTION: LLM analyzes results to find what's missing
+    4. RECURSIVE BACKFILL: Targeted follow-up searches to fill gaps
+    5. STRUCTURED SYNTHESIS: LLM combines all findings into research brief
+    
+    Each step emits trace events so the frontend can visualize the pipeline.
+    This is a real agentic architecture with branching and looping.
+    """
+    agent = DeepDiveAgent(vector_store=_vector_store)
+    result = await agent.run(
+        query=req.query,
+        workspace_id=req.workspace_id,
+        document_context=req.document_context,
+    )
+    
+    return DeepDiveResponse(
+        query=result.query,
+        sub_questions=result.sub_questions,
+        findings=result.findings[:30],
+        gaps=result.gaps,
+        synthesis=result.synthesis,
+        sources_searched=result.sources_searched,
+        papers_found=result.papers_found,
+        trace=[
+            DeepDiveTraceEvent(
+                step=t.step, status=t.status, title=t.title,
+                detail=t.detail, data=t.data, duration_ms=t.duration_ms,
+            )
+            for t in result.trace
+        ],
+        total_duration_ms=result.total_duration_ms,
+    )
+
+
+# ── Deep Dive → Next Steps Pipeline ───────────────────────────────────────────
+# After synthesis, Claude extracts actionable next steps, each tagged with
+# which agent should handle it. This creates a recursive agent pipeline:
+# Deep Dive → Synthesis → Next Steps → User clicks → Agent runs → repeat
+
+class NextStepsRequest(BaseModel):
+    synthesis: str
+    query: str
+    gaps: List[str] = []
+
+class NextStep(BaseModel):
+    action: str          # 'evidence' | 'challenge' | 'deep-dive' | 'socratic' | 'steelman'
+    query: str           # the specific query to send to that agent
+    rationale: str       # why this step matters
+    priority: str        # 'high' | 'medium' | 'low'
+    icon: str = ""
+
+class NextStepsResponse(BaseModel):
+    steps: List[NextStep]
+
+AGENT_ICONS = {
+    "evidence": "🔍", "challenge": "⚔️", "deep-dive": "🔬",
+    "socratic": "🤔", "steelman": "💪", "eli5": "💡", "connect": "🔗",
+}
+
+@app.post("/deep-dive/next-steps", response_model=NextStepsResponse)
+def deep_dive_next_steps(req: NextStepsRequest):
+    """Extract actionable next steps from a Deep Dive synthesis.
+    
+    Claude analyzes the synthesis + gaps and produces 3-5 concrete steps,
+    each tagged with the agent that should handle it. This enables a
+    recursive agent pipeline where one agent's output feeds the next.
+    """
+    prompt = f"""You are a research advisor. A student just completed a deep research dive on this topic:
+
+ORIGINAL QUERY: {req.query}
+
+RESEARCH SYNTHESIS:
+{req.synthesis[:2000]}
+
+KNOWLEDGE GAPS IDENTIFIED:
+{chr(10).join(f'- {g}' for g in req.gaps) if req.gaps else '(none identified)'}
+
+Based on this synthesis and the gaps, generate 3-5 concrete NEXT STEPS the student should take to deepen their research. Each step should be delegated to a specific AI agent:
+
+Available agents:
+- "evidence": Find supporting & contradicting evidence for a specific claim
+- "challenge": Devil's advocate — stress-test an argument or assumption
+- "deep-dive": Another full research dive into a sub-topic
+- "socratic": Generate probing questions to deepen understanding
+- "steelman": Strengthen a weak argument found in the research
+
+Return ONLY valid JSON array, no markdown:
+[
+  {{
+    "action": "evidence",
+    "query": "the specific text/claim to send to that agent",
+    "rationale": "why this step matters in 1 sentence",
+    "priority": "high"
+  }}
+]
+
+Make the queries specific and actionable — not vague. Each query should be a complete sentence or claim that the agent can work with directly. Return 3-5 steps."""
+
+    try:
+        raw = _call_ai_with_fallback(prompt, "You are a research methodology expert. Return only valid JSON.", max_tokens=1500)
+        cleaned = raw.replace("```json", "").replace("```", "").strip()
+        # Find the JSON array
+        start = cleaned.find("[")
+        end = cleaned.rfind("]") + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(cleaned[start:end])
+        else:
+            parsed = json.loads(cleaned)
+        
+        steps = []
+        for item in parsed[:5]:
+            action = item.get("action", "evidence")
+            if action not in AGENT_ICONS:
+                action = "evidence"
+            steps.append(NextStep(
+                action=action,
+                query=item.get("query", ""),
+                rationale=item.get("rationale", ""),
+                priority=item.get("priority", "medium"),
+                icon=AGENT_ICONS.get(action, "🔍"),
+            ))
+        return NextStepsResponse(steps=steps)
+    except Exception as e:
+        print(f"[NextSteps] Error: {e}")
+        return NextStepsResponse(steps=[])
 
 
 @app.get("/slack/status")
