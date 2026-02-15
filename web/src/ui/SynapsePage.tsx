@@ -126,7 +126,7 @@ const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
 };
 
 const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
-  { id: 'extract',    service: 'claude',   task: 'Extract',    label: 'Claude · Extract',           color: '#D4A574' },
+  { id: 'extract',    service: 'sonar',    task: 'Extract',    label: 'Sonar · Extract',            color: '#20B2AA' },
   { id: 'decompose',  service: 'claude',   task: 'Decompose',  label: 'Claude · Decompose',         color: '#D4A574' },
   { id: 'sscholar',   service: 'sscholar', task: 'Papers',     label: 'S.Scholar · Papers',         color: '#1857B6' },
   { id: 'sonar_web',  service: 'sonar',    task: 'Web',        label: 'Sonar · Web',                color: '#20B2AA' },
@@ -250,8 +250,8 @@ const SynapsePage: React.FC = () => {
     setIsExtracting(true);
     // Initialize pipeline with just the extract chip active
     setAgentChips(INITIAL_PIPELINE.map(c => ({ ...c, status: c.id === 'extract' ? 'active' as const : 'pending' as const })));
-    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Claude']), sources: 0, durationMs: 0 });
-    addTrace('Extracting claims...', 'step', 0, 'claude');
+    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Sonar']), sources: 0, durationMs: 0 });
+    addTrace('Extracting claims...', 'step', 0, 'sonar');
 
     try {
       const resp = await fetch('/api/extract-claims', {
@@ -273,7 +273,7 @@ const SynapsePage: React.FC = () => {
       }));
       setClaims(extracted);
       completeChip('extract');
-      addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'claude');
+      addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'sonar');
       extracted.forEach((c, i) => {
         addTrace(`Claim ${i + 1}: "${c.original.slice(0, 80)}${c.original.length > 80 ? '...' : ''}"`, 'info', 1);
       });
@@ -296,7 +296,7 @@ const SynapsePage: React.FC = () => {
       ...c,
       status: c.id === 'extract' ? 'done' as const : 'pending' as const,
     })));
-    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Claude']), sources: 0, durationMs: 0 });
+    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Sonar']), sources: 0, durationMs: 0 });
 
     // Update claim status
     setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'verifying' as const, verification: {
