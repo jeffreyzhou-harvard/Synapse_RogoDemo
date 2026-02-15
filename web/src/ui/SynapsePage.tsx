@@ -232,28 +232,43 @@ const SynapsePage: React.FC = () => {
     const doneClaims = claims.filter(c => c.status === 'done');
     if (doneClaims.length === 0) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/reports`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: ingestedTitle || 'Verification Report',
-          url: inputValue.startsWith('http') ? inputValue : undefined,
-          source_type: sourceType || 'text',
-          claims: claims.map(c => ({
-            id: c.id, original: c.original, normalized: c.normalized,
-            type: c.type, status: c.status, verification: c.verification,
-          })),
-          analyzed_at: new Date().toISOString(),
-        }),
-      });
-      if (resp.ok) {
-        const { id } = await resp.json();
-        setReportId(id);
-        const url = `${window.location.origin}/report/${id}`;
-        await navigator.clipboard.writeText(url);
-        setShareToast('Report link copied!');
-        setTimeout(() => setShareToast(''), 3000);
-      }
+      const reportData = {
+        title: ingestedTitle || 'Verification Report',
+        url: inputValue.startsWith('http') ? inputValue : undefined,
+        source_type: sourceType || 'text',
+        claims: claims.map(c => ({
+          id: c.id, original: c.original, normalized: c.normalized,
+          type: c.type, status: c.status, verification: c.verification,
+        })),
+        analyzed_at: new Date().toISOString(),
+      };
+
+      // Try backend first, fall back to client-generated ID
+      let id: string | null = null;
+      try {
+        const resp = await fetch(`${API_BASE}/api/reports`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reportData),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          id = data.id;
+        }
+      } catch {}
+
+      // Generate client-side ID if backend didn't return one
+      if (!id) id = Math.random().toString(36).slice(2, 10);
+
+      // Always persist to localStorage so ReportPage can retrieve it
+      const fullReport = { id, ...reportData, created_at: new Date().toISOString() };
+      localStorage.setItem(`synapse-report-${id}`, JSON.stringify(fullReport));
+
+      setReportId(id);
+      const url = `${window.location.origin}/report/${id}`;
+      await navigator.clipboard.writeText(url);
+      setShareToast('Report link copied!');
+      setTimeout(() => setShareToast(''), 3000);
     } catch (e) {
       setShareToast('Failed to save report');
       setTimeout(() => setShareToast(''), 3000);
