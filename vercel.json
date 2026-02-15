@@ -4,7 +4,7 @@
   "functions": {
     "api/index.py": {
       "runtime": "@vercel/python@4.3.1",
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "app/verification_engine.py"
     }
   },
