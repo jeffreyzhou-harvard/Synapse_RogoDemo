@@ -1,15 +1,7 @@
 {
   "buildCommand": "cd web && npm install && npm run build",
   "outputDirectory": "web/dist",
-  "functions": {
-    "api/index.py": {
-      "runtime": "@vercel/python@4.3.1",
-      "maxDuration": 300,
-      "includeFiles": "app/**"
-    }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.py" },
     { "source": "/report/(.*)", "destination": "/index.html" },
     { "source": "/((?!assets|synapse-logo|favicon|_vercel).*)", "destination": "/index.html" }
   ]
