@@ -572,6 +572,16 @@ const SynapsePage: React.FC = () => {
           50% { box-shadow: 0 0 12px 4px var(--agent-glow); }
           100% { box-shadow: 0 0 0 0 var(--agent-glow); }
         }
+        @keyframes ghostFloat {
+          0%, 100% { opacity: 0.04; transform: translateY(0); }
+          50% { opacity: 0.08; transform: translateY(-2px); }
+        }
+        @keyframes ghostShimmer {
+          0% { opacity: 0.03; }
+          30% { opacity: 0.07; }
+          60% { opacity: 0.04; }
+          100% { opacity: 0.03; }
+        }
         ::selection { background: rgba(255,255,255,0.2); }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 5px; }
@@ -823,10 +833,34 @@ const SynapsePage: React.FC = () => {
             })}
 
             {!claims.length && !isExtracting && !isIngesting && (
-              <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-                <div style={{ fontSize: '28px', marginBottom: '10px', opacity: 0.2 }}>🔍</div>
-                <div style={{ fontSize: '12px', color: '#555555', lineHeight: 1.5 }}>
-                  Paste a URL or text above to extract claims
+              <div style={{ padding: '12px 6px' }}>
+                {/* Counter */}
+                <div style={{ textAlign: 'center', marginBottom: '16px', padding: '8px' }}>
+                  <div style={{ fontSize: '22px', fontWeight: 800, color: '#1a1a1a', letterSpacing: '-1px' }}>0</div>
+                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#333333', textTransform: 'uppercase', letterSpacing: '1px' }}>claims extracted</div>
+                </div>
+                {/* Ghost claims */}
+                {[
+                  { w: '85%', delay: '0s', dur: '4s' },
+                  { w: '70%', delay: '1.2s', dur: '5s' },
+                  { w: '90%', delay: '2.4s', dur: '4.5s' },
+                ].map((g, i) => (
+                  <div key={i} style={{
+                    padding: '10px 12px', marginBottom: '4px', borderRadius: '8px',
+                    borderLeft: '3px solid #1a1a1a', border: '1px solid #111111',
+                    backgroundColor: '#0a0a0a',
+                    animation: `ghostFloat ${g.dur} ease-in-out ${g.delay} infinite`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                      <div style={{ width: '40px', height: '6px', borderRadius: '3px', backgroundColor: '#151515' }} />
+                      <div style={{ marginLeft: 'auto', width: '55px', height: '6px', borderRadius: '3px', backgroundColor: '#151515' }} />
+                    </div>
+                    <div style={{ width: g.w, height: '8px', borderRadius: '4px', backgroundColor: '#111111', marginBottom: '4px' }} />
+                    <div style={{ width: '50%', height: '8px', borderRadius: '4px', backgroundColor: '#0d0d0d' }} />
+                  </div>
+                ))}
+                <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '10px', color: '#2a2a2a' }}>
+                  Claims will appear here
                 </div>
               </div>
             )}
@@ -1312,11 +1346,121 @@ const SynapsePage: React.FC = () => {
               </div>
             </>
           ) : (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center', maxWidth: '360px', padding: '48px' }}>
-                <img src="/synapse-logo.svg" alt="" style={{ width: '48px', height: '48px', opacity: 0.15, margin: '0 auto 14px' }} />
-                <div style={{ fontSize: '14px', color: '#555555', lineHeight: 1.6 }}>
-                  Select a claim to see the full verification breakdown
+            /* ─── Ghost Preview ─── */
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+              {/* Overlay prompt */}
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 70%, transparent 100%)',
+                pointerEvents: 'none',
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <img src="/synapse-logo.svg" alt="" style={{ width: '36px', height: '36px', opacity: 0.4, margin: '0 auto 10px' }} />
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#555555' }}>Submit a URL to see the full verification</div>
+                </div>
+              </div>
+
+              {/* Ghost: sticky header with verdict */}
+              <div style={{ flexShrink: 0, padding: '16px 20px', borderBottom: '1px solid #111111' }}>
+                <div style={{ width: '80%', height: '10px', borderRadius: '5px', backgroundColor: '#0d0d0d', marginBottom: '12px', animation: 'ghostShimmer 5s ease infinite' }} />
+                {/* Ghost verdict banner */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '14px', padding: '12px 16px',
+                  borderRadius: '10px', border: '1px solid #111111', backgroundColor: '#080808',
+                  animation: 'ghostShimmer 6s ease 0.5s infinite',
+                }}>
+                  <div style={{ width: '120px', height: '16px', borderRadius: '4px', backgroundColor: '#0f0f0f' }} />
+                  <div style={{ width: '50px', height: '12px', borderRadius: '4px', backgroundColor: '#0d0d0d' }} />
+                  <div style={{ flex: 1, height: '10px', borderRadius: '4px', backgroundColor: '#0a0a0a' }} />
+                </div>
+                {/* Ghost agent bar */}
+                <div style={{ marginTop: '10px', display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {['#6bccc8','#e8c8a0','#6b9bd2','#6bccc8','#6bccc8','#e8c8a0','#e8c8a0','#6bccc8','#e8c8a0'].map((c, i) => (
+                    <React.Fragment key={i}>
+                      <div style={{
+                        width: `${50 + Math.random() * 40}px`, height: '16px', borderRadius: '5px',
+                        border: `1px solid ${c}10`, backgroundColor: `${c}05`,
+                        animation: `ghostShimmer ${4 + i * 0.3}s ease ${i * 0.2}s infinite`,
+                      }} />
+                      {i < 8 && <span style={{ fontSize: '8px', color: '#111111' }}>→</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+                {/* Ghost stats */}
+                <div style={{ marginTop: '8px', display: 'flex', gap: '10px' }}>
+                  {[60, 50, 45, 80, 35].map((w, i) => (
+                    <div key={i} style={{ width: `${w}px`, height: '8px', borderRadius: '4px', backgroundColor: '#0a0a0a', animation: `ghostShimmer 5s ease ${i * 0.4}s infinite` }} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Ghost tabs */}
+              <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid #111111', backgroundColor: '#050505' }}>
+                {['Sub-Claims', 'Evidence', 'Provenance', 'Correction'].map((t, i) => (
+                  <div key={t} style={{
+                    flex: 1, padding: '10px 8px', textAlign: 'center',
+                    borderBottom: i === 2 ? '2px solid #1a1a1a' : '2px solid transparent',
+                    fontSize: '11px', fontWeight: 700, color: '#151515',
+                  }}>{t}</div>
+                ))}
+              </div>
+
+              {/* Ghost provenance tree (the hero visual) */}
+              <div style={{ flex: 1, overflow: 'hidden', padding: '24px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0', overflowX: 'hidden', minHeight: '140px' }}>
+                  {[
+                    { icon: '📄', sev: '#4ade80', w: 180 },
+                    { icon: '📰', sev: '#fbbf24', w: 170 },
+                    { icon: '📱', sev: '#fb923c', w: 160 },
+                    { icon: '💻', sev: '#f87171', w: 175 },
+                  ].map((node, i, arr) => (
+                    <React.Fragment key={i}>
+                      <div style={{
+                        flexShrink: 0, width: `${node.w}px`, padding: '14px',
+                        borderRadius: '10px', border: `1px solid ${node.sev}08`,
+                        backgroundColor: '#080808', position: 'relative',
+                        animation: `ghostShimmer ${5 + i * 0.5}s ease ${i * 0.8}s infinite`,
+                      }}>
+                        <div style={{
+                          position: 'absolute', top: '-5px', left: '50%', transform: 'translateX(-50%)',
+                          width: '10px', height: '10px', borderRadius: '50%',
+                          backgroundColor: node.sev, border: '2px solid #000000', opacity: 0.08,
+                        }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '12px', opacity: 0.06 }}>{node.icon}</span>
+                          <div style={{ width: '50px', height: '6px', borderRadius: '3px', backgroundColor: '#0d0d0d' }} />
+                          <div style={{ marginLeft: 'auto', width: '30px', height: '6px', borderRadius: '3px', backgroundColor: '#0a0a0a' }} />
+                        </div>
+                        <div style={{ width: '70%', height: '7px', borderRadius: '3px', backgroundColor: '#0a0a0a', marginBottom: '4px' }} />
+                        <div style={{ width: '90%', height: '7px', borderRadius: '3px', backgroundColor: '#080808', marginBottom: '4px' }} />
+                        <div style={{ width: '40%', height: '7px', borderRadius: '3px', backgroundColor: '#080808' }} />
+                      </div>
+                      {i < arr.length - 1 && (
+                        <div style={{ flexShrink: 0, width: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="40" height="20" viewBox="0 0 40 20" style={{ opacity: 0.06 }}>
+                            <defs>
+                              <linearGradient id={`ghost-grad-${i}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor={node.sev} />
+                                <stop offset="100%" stopColor={arr[i + 1].sev} />
+                              </linearGradient>
+                            </defs>
+                            <line x1="0" y1="10" x2="30" y2="10" stroke={`url(#ghost-grad-${i})`} strokeWidth="2" />
+                            <polygon points="30,5 40,10 30,15" fill={arr[i + 1].sev} />
+                          </svg>
+                        </div>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+                {/* Ghost analysis box */}
+                <div style={{
+                  marginTop: '16px', padding: '12px 14px', borderRadius: '8px',
+                  backgroundColor: '#060606', border: '1px solid #0d0d0d',
+                  animation: 'ghostShimmer 6s ease 1s infinite',
+                }}>
+                  <div style={{ width: '60px', height: '7px', borderRadius: '3px', backgroundColor: '#0d0d0d', marginBottom: '8px' }} />
+                  <div style={{ width: '100%', height: '7px', borderRadius: '3px', backgroundColor: '#0a0a0a', marginBottom: '4px' }} />
+                  <div style={{ width: '85%', height: '7px', borderRadius: '3px', backgroundColor: '#080808' }} />
                 </div>
               </div>
             </div>
@@ -1381,6 +1525,26 @@ const SynapsePage: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ═══ Powered By Footer ═══════════════════════════════════════════ */}
+      <div style={{
+        flexShrink: 0, padding: '6px 24px', borderTop: '1px solid #111111',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px',
+        backgroundColor: '#000000',
+      }}>
+        <span style={{ fontSize: '9px', color: '#333333', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Powered by</span>
+        {[
+          { label: 'Claude Sonnet', color: '#e8c8a0' },
+          { label: 'Perplexity Sonar', color: '#6bccc8' },
+          { label: 'Semantic Scholar', color: '#6b9bd2' },
+          { label: 'Deepgram', color: '#a78bfa' },
+        ].map(s => (
+          <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: s.color, opacity: 0.6 }} />
+            <span style={{ fontSize: '9px', color: '#333333', fontWeight: 600 }}>{s.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
