@@ -6,3 +6,4 @@ pydantic>=2.7
 python-dotenv>=1.0
 httpx>=0.21
 anthropic>=0.34
+
