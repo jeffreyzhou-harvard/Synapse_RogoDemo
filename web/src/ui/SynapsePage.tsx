@@ -639,10 +639,10 @@ const SynapsePage: React.FC = () => {
             {!claims.length && !isIngesting && !isExtracting && (
               <div style={{ textAlign: 'center', marginBottom: '20px', animation: 'fadeIn 0.5s ease' }}>
                 <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#ffffff', marginBottom: '6px', letterSpacing: '-0.5px' }}>
-                  X-ray any claim
+                  Verify before you trust
                 </h1>
                 <p style={{ fontSize: '13px', color: '#666666', maxWidth: '480px', margin: '0 auto' }}>
-                  Paste a URL, article text, or drop an audio file. Synapse extracts every factual claim and runs deep multi-step verification.
+                  Paste any URL, text, or audio. Synapse extracts every claim and cross-references it against academic papers, institutional sources, and counter-evidence.
                 </p>
               </div>
             )}
