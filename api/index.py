@@ -145,23 +145,15 @@ def api_extract_claims(req: ExtractClaimsRequest):
     return ExtractClaimsResponse(claims=claims)
 
 @app.post("/api/verify")
-async def api_verify(req: VerifyRequest):
+def api_verify(req: VerifyRequest):
     if not req.claim.strip():
         raise HTTPException(status_code=400, detail="Claim is empty")
 
-    import asyncio
-
-    async def event_stream():
+    def event_stream():
         try:
-            loop = asyncio.get_event_loop()
-            # Run the sync generator in a thread to not block the event loop
-            events = await loop.run_in_executor(
-                None, lambda: list(run_verification_pipeline(req.claim))
-            )
-            for event in events:
+            for event in run_verification_pipeline(req.claim):
                 print(f"[Vercel SSE] {event.type}")
                 yield event.to_sse()
-                await asyncio.sleep(0)  # yield control
         except Exception as e:
             import traceback
             print(f"[Vercel SSE ERROR] {e}\n{traceback.format_exc()}")
@@ -170,10 +162,9 @@ async def api_verify(req: VerifyRequest):
 
     return StreamingResponse(
         event_stream(),
-        media_type="text/event-stream; charset=utf-8",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
