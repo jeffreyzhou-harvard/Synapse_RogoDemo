@@ -1,6 +1,7 @@
 # Slim deps for Vercel serverless (api/index.py + app/verification_engine.py)
 # Full local deps are in requirements-local.txt
 fastapi>=0.111
+uvicorn>=0.29
 pydantic>=2.7
 python-dotenv>=1.0
 httpx>=0.21
