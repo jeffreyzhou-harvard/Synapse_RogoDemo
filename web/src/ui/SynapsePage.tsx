@@ -259,6 +259,19 @@ const SynapsePage: React.FC = () => {
     }
   }, [claims, ingestedTitle, inputValue, sourceType]);
 
+  // ─── Trending Tweets (live from X API) ─────────────────────────────
+
+  const [trendingTweets, setTrendingTweets] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/trending-tweets`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.tweets?.length) setTrendingTweets(data.tweets);
+      })
+      .catch(() => {});
+  }, []);
+
   // ─── Preloaded Examples ────────────────────────────────────────────
 
   const PRELOADED_EXAMPLES = [
@@ -654,6 +667,11 @@ const SynapsePage: React.FC = () => {
           60% { opacity: 0.04; }
           100% { opacity: 0.03; }
         }
+        @keyframes scroll-ticker {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .scroll-ticker-wrap:hover > div { animation-play-state: paused; }
         ::selection { background: rgba(255,255,255,0.2); }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 5px; }
@@ -749,6 +767,67 @@ const SynapsePage: React.FC = () => {
                     );
                   })}
                 </div>
+
+                {/* ─── Live Tweet Ticker ─────────────────────────────── */}
+                {trendingTweets.length > 0 && (
+                  <div style={{ marginTop: '20px', position: 'relative' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#333', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s ease-in-out infinite' }} />
+                      Live from 𝕏 — tweets with verifiable claims
+                    </div>
+                    {/* Fade edges */}
+                    <div className="scroll-ticker-wrap" style={{ position: 'relative', overflow: 'hidden', maskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)' }}>
+                      <div style={{
+                        display: 'flex', gap: '12px', width: 'max-content',
+                        animation: `scroll-ticker ${Math.max(30, trendingTweets.length * 4)}s linear infinite`,
+                      }}>
+                        {/* Duplicate for seamless loop */}
+                        {[...trendingTweets, ...trendingTweets].map((tweet, i) => (
+                          <button key={`${tweet.id}-${i}`}
+                            onClick={() => { setInputMode('url'); setInputValue(tweet.url); }}
+                            style={{
+                              flexShrink: 0, width: '280px', padding: '10px 12px',
+                              borderRadius: '8px', border: '1px solid #1a1a1a',
+                              background: 'linear-gradient(135deg, #0a0a0a 0%, #0f0f0f 100%)',
+                              cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.2s',
+                              display: 'flex', flexDirection: 'column', gap: '6px',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.borderColor = '#333')}
+                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1a1a1a')}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {tweet.avatar ? (
+                                <img src={tweet.avatar} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                              ) : (
+                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#1a1a1a' }} />
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#ccc' }}>{tweet.author}</span>
+                                <span style={{ fontSize: '10px', color: '#444', marginLeft: '4px' }}>{tweet.handle}</span>
+                              </div>
+                              <span style={{ fontSize: '10px', color: '#1d9bf0' }}>𝕏</span>
+                            </div>
+                            <div style={{
+                              fontSize: '11px', color: '#999', lineHeight: 1.4,
+                              overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any,
+                            }}>
+                              {tweet.text}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '9px', color: '#444' }}>
+                              <span>❤️ {tweet.likes > 999 ? `${(tweet.likes / 1000).toFixed(1)}k` : tweet.likes}</span>
+                              <span>🔁 {tweet.retweets > 999 ? `${(tweet.retweets / 1000).toFixed(1)}k` : tweet.retweets}</span>
+                              <div style={{ flex: 1 }} />
+                              <span style={{
+                                fontSize: '8px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase',
+                                padding: '2px 6px', borderRadius: '3px', border: '1px solid rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)',
+                              }}>Verify →</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>

@@ -4268,3 +4268,88 @@ def api_verify(req: VerifyRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ─── Trending Tweets Feed ─────────────────────────────────────────────────
+
+import httpx as _httpx
+import time as _time
+
+_tweets_cache: Dict[str, Any] = {"data": [], "ts": 0}
+_TWEETS_CACHE_TTL = 300  # 5 minutes
+
+_CLAIM_QUERIES = [
+    '"according to a study" -is:retweet lang:en',
+    '"research shows" -is:retweet lang:en',
+    '"scientists found" -is:retweet lang:en',
+    '"a new report" -is:retweet lang:en',
+    '"percent of" -is:retweet lang:en',
+    '"breaking" health OR climate OR AI OR economy -is:retweet lang:en',
+]
+
+@app.get("/api/trending-tweets")
+def api_trending_tweets():
+    """Fetch real trending tweets containing verifiable claims via X API v2."""
+    bearer = os.getenv("X_BEARER_TOKEN")
+    if not bearer:
+        return {"tweets": [], "error": "X_BEARER_TOKEN not configured"}
+
+    # Return cached if fresh
+    if _time.time() - _tweets_cache["ts"] < _TWEETS_CACHE_TTL and _tweets_cache["data"]:
+        return {"tweets": _tweets_cache["data"]}
+
+    all_tweets = []
+    seen_ids = set()
+
+    for query in _CLAIM_QUERIES:
+        if len(all_tweets) >= 20:
+            break
+        try:
+            resp = _httpx.get(
+                "https://api.x.com/2/tweets/search/recent",
+                params={
+                    "query": query,
+                    "max_results": 10,
+                    "tweet.fields": "author_id,created_at,text,public_metrics",
+                    "expansions": "author_id",
+                    "user.fields": "name,username,profile_image_url",
+                },
+                headers={"Authorization": f"Bearer {bearer}"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                tweets = data.get("data", [])
+                users = {u["id"]: u for u in data.get("includes", {}).get("users", [])}
+
+                for t in tweets:
+                    if t["id"] in seen_ids:
+                        continue
+                    seen_ids.add(t["id"])
+                    author = users.get(t.get("author_id"), {})
+                    metrics = t.get("public_metrics", {})
+                    all_tweets.append({
+                        "id": t["id"],
+                        "text": t["text"],
+                        "author": author.get("name", "Unknown"),
+                        "handle": f"@{author.get('username', '')}",
+                        "avatar": author.get("profile_image_url", ""),
+                        "created_at": t.get("created_at", ""),
+                        "likes": metrics.get("like_count", 0),
+                        "retweets": metrics.get("retweet_count", 0),
+                        "replies": metrics.get("reply_count", 0),
+                        "url": f"https://x.com/{author.get('username', 'i')}/status/{t['id']}",
+                    })
+            elif resp.status_code == 429:
+                print(f"[Trending] Rate limited on query: {query}")
+                break
+            else:
+                print(f"[Trending] X API {resp.status_code} for query: {query}")
+        except Exception as e:
+            print(f"[Trending] Error fetching tweets: {e}")
+
+    # Cache results
+    _tweets_cache["data"] = all_tweets
+    _tweets_cache["ts"] = _time.time()
+
+    return {"tweets": all_tweets}
