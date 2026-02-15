@@ -5,6 +5,7 @@ interface MentionEditorProps {
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  onTextSelect?: (selectedText: string, rect: { top: number; left: number; width: number; height: number }) => void;
   placeholder?: string;
   style?: React.CSSProperties;
   isFocused?: boolean;
@@ -22,6 +23,7 @@ const MentionEditor: React.FC<MentionEditorProps> = ({
   onChange,
   onFocus,
   onBlur,
+  onTextSelect,
   placeholder = "Start writing...",
   style = {},
   isFocused = false
@@ -247,6 +249,19 @@ const MentionEditor: React.FC<MentionEditorProps> = ({
         onSelect={(e) => {
           const target = e.target as HTMLTextAreaElement;
           setCursorPosition(target.selectionStart);
+          if (onTextSelect && target.selectionStart !== target.selectionEnd) {
+            const text = target.value.substring(target.selectionStart, target.selectionEnd).trim();
+            if (text) {
+              const rect = target.getBoundingClientRect();
+              // Estimate position based on selection within textarea
+              const lines = target.value.substring(0, target.selectionStart).split('\n');
+              const lineHeight = 25.6; // 16px * 1.6
+              const approxTop = rect.top + (lines.length - 1) * lineHeight;
+              onTextSelect(text, { top: approxTop, left: rect.left, width: rect.width, height: lineHeight });
+            }
+          } else if (onTextSelect && target.selectionStart === target.selectionEnd) {
+            onTextSelect('', { top: 0, left: 0, width: 0, height: 0 });
+          }
         }}
         placeholder={placeholder}
         style={{

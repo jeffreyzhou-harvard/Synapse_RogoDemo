@@ -1,817 +1,472 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 import DocumentService, { Document } from '../services/documentService';
-import KnowledgeGraphModal from '../components/KnowledgeGraphModal';
+
+const PAPER_STYLES = [
+  { id: 'academic', label: 'Academic', desc: 'Formal research paper with standard sections' },
+  { id: 'argumentative', label: 'Argumentative', desc: 'Thesis-driven with evidence and counterarguments' },
+  { id: 'literature-review', label: 'Literature Review', desc: 'Survey of existing research and gaps' },
+  { id: 'expository', label: 'Expository', desc: 'In-depth explanation of a topic' },
+];
+
+interface WizardMessage {
+  role: 'user' | 'ai';
+  text: string;
+}
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('All');
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
-  const [showKnowledgeGraphModal, setShowKnowledgeGraphModal] = useState(false);
-  const [knowledgeGraph, setKnowledgeGraph] = useState<{nodes: any[], edges: any[]} | null>(null);
-  const [showTasks, setShowTasks] = useState(false);
-  const [goal, setGoal] = useState('');
+  const [topic, setTopic] = useState('');
+  const [paperStyle, setPaperStyle] = useState('academic');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const getDraftsCount = () => {
-    return documents.filter(doc => doc.status === 'draft').length;
-  };
+  // Research question wizard state
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardTopic, setWizardTopic] = useState('');
+  const [wizardConvo, setWizardConvo] = useState<WizardMessage[]>([]);
+  const [wizardInput, setWizardInput] = useState('');
+  const [wizardLoading, setWizardLoading] = useState(false);
+  const [refinedQuestion, setRefinedQuestion] = useState('');
 
-  async function loadKnowledgeGraph(): Promise<void> {
+  useEffect(() => {
+    setDocuments(DocumentService.getAllDocuments());
+    const handleStorageChange = () => setDocuments(DocumentService.getAllDocuments());
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const filtered = searchTerm.trim()
+    ? DocumentService.searchDocuments(searchTerm)
+    : documents.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  // ── Research Question Wizard ──────────────────────────────────────
+  const askSocratic = useCallback(async (topicStr: string, convo: WizardMessage[]) => {
+    setWizardLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/knowledge-graph/graph');
-      if (response.ok) {
-        const graphData = await response.json();
-        setKnowledgeGraph(graphData);
-        // Show tasks if there are any task nodes
-        if (graphData.nodes && graphData.nodes.some(n => n.type === 'task')) {
-          setShowTasks(true);
+      const resp = await fetch('/refine-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topicStr, conversation: convo }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.is_complete && data.question) {
+          setRefinedQuestion(data.question);
+        } else if (data.follow_up) {
+          setWizardConvo(prev => [...prev, { role: 'ai', text: data.follow_up }]);
         }
       }
-    } catch (error) {
-      console.error('Failed to load knowledge graph:', error);
+    } catch {
+      setWizardConvo(prev => [...prev, { role: 'ai', text: 'What specific aspect of this topic interests you most?' }]);
+    } finally {
+      setWizardLoading(false);
     }
-  }
+  }, []);
 
-  async function generatePlan(): Promise<void> {
-    if (!goal.trim()) return;
-    
+  const startWizard = useCallback(() => {
+    if (!topic.trim()) return;
+    setWizardTopic(topic.trim());
+    setWizardConvo([]);
+    setRefinedQuestion('');
+    setWizardOpen(true);
+    // Start first Socratic question
+    askSocratic(topic.trim(), []);
+  }, [topic, askSocratic]);
+
+  const handleWizardReply = useCallback(async () => {
+    if (!wizardInput.trim() || wizardLoading) return;
+    const reply = wizardInput.trim();
+    setWizardInput('');
+    const newConvo = [...wizardConvo, { role: 'user' as const, text: reply }];
+    setWizardConvo(newConvo);
+    await askSocratic(wizardTopic, newConvo);
+  }, [wizardInput, wizardConvo, wizardTopic, wizardLoading, askSocratic]);
+
+  const useRefinedQuestion = useCallback(() => {
+    setTopic(refinedQuestion.replace(/\?$/, ''));
+    setWizardOpen(false);
+  }, [refinedQuestion]);
+
+  async function generatePaper() {
+    if (!topic.trim()) return;
     setLoading(true);
+    setError('');
     try {
-      const response = await fetch('http://localhost:8000/plan', {
+      const response = await fetch('/generate-paper', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          goal: goal,
-          notes: ''
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic.trim(), style: paperStyle }),
       });
-
       if (response.ok) {
-        const planData = await response.json();
-        console.log('Plan generated:', planData);
-        // Reload knowledge graph to show new tasks
-        await loadKnowledgeGraph();
-        setShowTasks(true);
+        const data = await response.json();
+        // Create a new document with the generated content
+        const doc = DocumentService.saveDocument({
+          title: data.title || topic,
+          content: data.content || '',
+          status: 'draft',
+        });
+        // Navigate to the editor with the new document
+        navigate(`/editor/${doc.id}`);
+      } else {
+        const errData = await response.json().catch(() => null);
+        setError(errData?.detail || 'Failed to generate paper. Try again.');
       }
-    } catch (error) {
-      console.error('Failed to generate plan:', error);
+    } catch (err) {
+      console.error('Failed to generate paper:', err);
+      setError('Network error. Is the backend running?');
     } finally {
       setLoading(false);
     }
   }
 
-  const sidebarItems = [
-    { id: 'all', label: 'All', icon: 'document', badgeCount: null },
-    { id: 'shared', label: 'Shared with me', icon: 'people', badgeCount: null },
-    { id: 'drafts', label: 'Drafts', icon: 'compose', badgeCount: getDraftsCount() },
-    { id: 'favorites', label: 'Favorites', icon: 'star', badgeCount: null },
-    { id: 'trash', label: 'Trash', icon: 'delete', badgeCount: null }
-  ];
-
-  const collections = [
-    'Analytics',
-    'Goals & OKRs', 
-    'Team Resources'
-  ];
-
-  const tabs = ['All', 'Recently viewed', 'Recently updated', 'Created by me'];
-
-  // Load documents on component mount
-  useEffect(() => {
-    const loadDocuments = () => {
-      const allDocs = DocumentService.getAllDocuments();
-      setDocuments(allDocs);
-      filterDocuments(allDocs, activeTab, searchTerm);
-    };
-    
-    loadDocuments();
-    loadKnowledgeGraph(); // Load existing tasks on mount
-    
-    // Listen for storage changes (in case documents are updated in another tab)
-    const handleStorageChange = () => {
-      loadDocuments();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // Filter documents based on active tab and search term
-  useEffect(() => {
-    filterDocuments(documents, activeTab, searchTerm);
-  }, [documents, activeTab, searchTerm]);
-
-  const filterDocuments = (docs: Document[], tab: string, search: string) => {
-    let filtered = docs;
-    
-    // Apply search filter
-    if (search.trim()) {
-      filtered = DocumentService.searchDocuments(search);
-    }
-    
-    // Apply tab filter
-    switch (tab) {
-      case 'All':
-        break;
-      case 'Recently viewed':
-        // For now, just sort by updated date
-        filtered = filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        break;
-      case 'Recently updated':
-        filtered = filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        break;
-      case 'Created by me':
-        // All documents are created by the user in this local setup
-        break;
-    }
-    
-    setFilteredDocuments(filtered);
-  };
-
-  const handleDocumentClick = (doc: Document) => {
-    navigate(`/editor/${doc.id}`);
-  };
-
   const handleDeleteDocument = (doc: Document, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Are you sure you want to delete "${doc.title}"?`)) {
+    if (window.confirm(`Delete "${doc.title}"?`)) {
       DocumentService.deleteDocument(doc.id);
-      const updatedDocs = documents.filter(d => d.id !== doc.id);
-      setDocuments(updatedDocs);
-      filterDocuments(updatedDocs, activeTab, searchTerm);
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
     }
-  };
-
-  const handleNewDoc = () => {
-    navigate('/editor');
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100vh',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      backgroundColor: '#f8f9fa',
-      color: '#2d3748'
-    }}>
-      {/* Sidebar */}
-      <aside style={{
-        width: '250px',
-        backgroundColor: '#e2e8f0',
-        borderRight: '1px solid #cbd5e0',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '0'
-      }}>
-        {/* Navigation */}
-        <nav style={{ padding: '16px 0' }}>
-          {sidebarItems.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '10px 20px',
-                fontSize: '14px',
-                color: item.id === 'all' ? '#2d3748' : '#4a5568',
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s, color 0.2s',
-                backgroundColor: item.id === 'all' ? '#cbd5e0' : 'transparent',
-                fontWeight: item.id === 'all' ? '500' : 'normal'
-              }}
-              onMouseEnter={(e) => {
-                if (item.id !== 'all') {
-                  e.currentTarget.style.backgroundColor = '#f1f5f9';
-                  e.currentTarget.style.color = '#2d3748';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (item.id !== 'all') {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = '#4a5568';
-                }
-              }}
-            >
-              <Icon name={item.icon} size={16} />
-              <span>{item.label}</span>
-              {item.badgeCount && (
-                <span style={{
-                  marginLeft: 'auto',
-                  backgroundColor: '#e5e7eb',
-                  color: '#6b7280',
-                  fontSize: '12px',
-                  padding: '2px 6px',
-                  borderRadius: '10px',
-                  minWidth: '18px',
-                  textAlign: 'center'
-                }}>
-                  {item.badgeCount}
-                </span>
-              )}
-            </div>
-          ))}
-        </nav>
+    <div style={{ minHeight: '100vh', fontFamily: "'Inter', system-ui, -apple-system, sans-serif", backgroundColor: '#fff', color: '#1a202c' }}>
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
 
-        {/* Collections Section */}
-        <div>
-          <div style={{
-            padding: '16px 20px 8px 20px',
-            fontSize: '12px',
-            fontWeight: '600',
-            color: '#718096',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px'
-          }}>
-            Collections
-          </div>
-          {collections.map((collection) => (
-            <div
-              key={collection}
-              style={{
-                paddingLeft: '48px',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '10px 20px',
-                color: '#4a5568',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s, color 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#f1f5f9';
-                e.currentTarget.style.color = '#2d3748';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = '#4a5568';
-              }}
-            >
-              <Icon name="folder" size={16} />
-              <span>{collection}</span>
-            </div>
-          ))}
-          <button
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 20px',
-              fontSize: '13px',
-              color: '#6b7280',
-              cursor: 'pointer',
-              border: 'none',
-              background: 'none',
-              width: '100%',
-              textAlign: 'left'
-            }}
-          >
-            <Icon name="plus" size={13} />
-            <span>New collection</span>
-          </button>
+      {/* Top bar */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 24px', borderBottom: '1px solid #f0f0f0', position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'linear-gradient(135deg, #4a5568 0%, #2d3748 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px', fontWeight: 700 }}>S</div>
+          <span style={{ fontSize: '16px', fontWeight: 600 }}>Synapse</span>
         </div>
 
-        {/* User Section */}
-        <div style={{
-          marginTop: 'auto',
-          padding: '16px 20px',
-          borderTop: '1px solid #cbd5e0'
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              backgroundColor: '#6b7280',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
-              U
-            </div>
-            <div style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: '#2d3748'
-            }}>
-              User Name
-            </div>
+        <div style={{ position: 'relative', maxWidth: '360px', flex: 1, margin: '0 24px' }}>
+          <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}>
+            <Icon name="search" size={15} color="#9ca3af" />
           </div>
+          <input type="text" placeholder="Search documents..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ width: '100%', padding: '7px 12px 7px 34px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', backgroundColor: '#fafafa', outline: 'none', transition: 'border-color 0.15s' }}
+            onFocus={(e) => { e.target.style.borderColor = '#9ca3af'; }}
+            onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; }}
+          />
         </div>
-      </aside>
 
-      {/* Main Content */}
-      <div style={{
-        flex: '1',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden'
-      }}>
-        {/* Header */}
-        <header style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 20px',
-          backgroundColor: 'white',
-          borderBottom: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-        }}>
-          {/* Logo */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '16px',
-            fontWeight: '600',
-            color: '#2d3748'
-          }}>
-            <img
-              src="/MidlayerLogo.png"
-              alt="Midlayer"
-              style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '4px'
-              }}
+        <button onClick={() => navigate('/editor')}
+          style={{ backgroundColor: '#1a202c', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background-color 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#2d3748'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1a202c'; }}
+        >
+          <Icon name="plus" size={14} color="white" />
+          New document
+        </button>
+      </header>
+
+      {/* Main content */}
+      <main style={{ maxWidth: '860px', margin: '0 auto', padding: '40px 24px 80px' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c', marginBottom: '6px' }}>Welcome back</h1>
+        <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '36px', lineHeight: 1.5 }}>
+          Plan your paper, then write. Highlight text to find evidence, challenge ideas, and verify claims.
+        </p>
+
+        {/* Paper Format Planner */}
+        <div style={{ backgroundColor: '#fafafa', borderRadius: '10px', padding: '20px', marginBottom: '36px', border: '1px solid #f0f0f0' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#1a202c', margin: '0 0 12px' }}>Plan a Paper Format</h2>
+
+          {/* Topic input */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+            <input type="text"
+              placeholder="Enter your topic (e.g., Impact of AI on Healthcare, Climate Policy...)"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !loading) generatePaper(); }}
+              style={{ flex: 1, padding: '9px 14px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '13px', outline: 'none', transition: 'border-color 0.15s' }}
+              onFocus={(e) => { e.target.style.borderColor = '#9ca3af'; }}
+              onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; }}
             />
-            <span>Midlayer</span>
-          </div>
-
-          {/* Search Bar */}
-          <div style={{
-            position: 'relative',
-            maxWidth: '400px',
-            flex: '1',
-            margin: '0 20px'
-          }}>
-            <div style={{
-              position: 'absolute',
-              left: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#9ca3af',
-              width: '16px',
-              height: '16px'
-            }}>
-              <Icon name="search" size={16} color="#9ca3af" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+            <button onClick={startWizard} disabled={!topic.trim()}
+              title="Refine your topic into a specific research question through guided questions"
               style={{
-                width: '100%',
-                padding: '8px 12px 8px 36px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-                backgroundColor: '#f9fafb',
-                outline: 'none',
-                transition: 'border-color 0.2s, box-shadow 0.2s'
+                padding: '9px 14px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '13px', fontWeight: 500,
+                backgroundColor: !topic.trim() ? '#f9fafb' : '#fff', color: !topic.trim() ? '#d1d5db' : '#6b7280',
+                cursor: !topic.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap',
               }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#3b82f6';
-                e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#d1d5db';
-                e.target.style.boxShadow = 'none';
-              }}
-            />
-          </div>
-
-          {/* New Doc Button */}
-          <button
-            onClick={handleNewDoc}
-            style={{
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#2563eb';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#3b82f6';
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.backgroundColor = '#1d4ed8';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.backgroundColor = '#2563eb';
-            }}
-          >
-            <Icon name="plus" size={16} color="white" />
-            <span>New</span>
-          </button>
-        </header>
-
-        {/* Main Content Area */}
-        <main style={{
-          padding: '40px 60px',
-          maxWidth: '1200px',
-          margin: '0 auto',
-          width: '100%'
-        }}>
-          <h1 style={{
-            fontSize: '32px',
-            fontWeight: '700',
-            color: '#1a202c',
-            marginBottom: '32px'
-          }}>
-            Welcome back
-          </h1>
-
-          {/* Task Planning Section */}
-          <div style={{
-            backgroundColor: '#f8fafc',
-            borderRadius: '12px',
-            padding: '24px',
-            marginBottom: '32px',
-            border: '1px solid #e2e8f0'
-          }}>
-            <h2 style={{
-              fontSize: '20px',
-              fontWeight: '600',
-              color: '#1a202c',
-              marginBottom: '16px'
-            }}>
-              Task Planning
-            </h2>
-            
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-              <input
-                type="text"
-                placeholder="Enter your goal (e.g., Build a mobile app for food delivery)"
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                style={{
-                  flex: '1',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #d1d5db',
-                  fontSize: '14px',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#3b82f6';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#d1d5db';
-                }}
-              />
-              <button
-                onClick={generatePlan}
-                disabled={loading || !goal.trim()}
-                style={{
-                  backgroundColor: loading || !goal.trim() ? '#9ca3af' : '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: loading || !goal.trim() ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                {loading ? 'Generating...' : 'Generate Plan'}
-              </button>
-            </div>
-
-            {showTasks && knowledgeGraph && (
-              <div style={{
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                padding: '20px',
-                border: '1px solid #e2e8f0'
+              onMouseEnter={(e) => { if (topic.trim()) e.currentTarget.style.borderColor = '#9ca3af'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+            >
+              🤔 Refine
+            </button>
+            <button onClick={generatePaper} disabled={loading || !topic.trim()}
+              style={{
+                padding: '9px 18px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 500,
+                backgroundColor: loading || !topic.trim() ? '#d1d5db' : '#1a202c', color: 'white',
+                cursor: loading || !topic.trim() ? 'not-allowed' : 'pointer', transition: 'background-color 0.15s',
+                minWidth: '110px',
               }}>
-                <h3 style={{
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#1a202c',
-                  marginBottom: '16px'
-                }}>
-                  Generated Tasks ({knowledgeGraph.nodes.filter(n => n.type === 'task').length})
-                </h3>
-                
-                <div style={{
-                  display: 'grid',
-                  gap: '12px',
-                  maxHeight: '400px',
-                  overflowY: 'auto'
-                }}>
-                  {knowledgeGraph.nodes.filter(node => node.type === 'task').map((node, index) => (
-                    <div
-                      key={node.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        padding: '16px',
-                        backgroundColor: '#f8fafc',
-                        borderRadius: '8px',
-                        border: '1px solid #e2e8f0'
-                      }}
-                    >
-                      <div style={{
-                        minWidth: '24px',
-                        height: '24px',
-                        borderRadius: '50%',
-                        backgroundColor: '#3b82f6',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        fontWeight: '600'
-                      }}>
-                        {index + 1}
-                      </div>
-                      <div style={{ flex: '1' }}>
-                        <h4 style={{
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#1a202c',
-                          marginBottom: '4px'
-                        }}>
-                          {node.name || node.id}
-                        </h4>
-                        {node.metadata?.description && (
-                          <p style={{
-                            fontSize: '13px',
-                            color: '#4a5568',
-                            lineHeight: '1.4',
-                            marginBottom: '8px'
-                          }}>
-                            {node.metadata.description}
-                          </p>
-                        )}
-                        <div style={{
-                          display: 'flex',
-                          gap: '12px',
-                          fontSize: '12px',
-                          color: '#6b7280'
-                        }}>
-                          {node.metadata?.priority && (
-                            <span>Priority: {node.metadata.priority}</span>
-                          )}
-                          {node.metadata?.estimate && (
-                            <span>Estimate: {node.metadata.estimate}</span>
-                          )}
-                          <span>Status: {node.metadata?.status || 'pending'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              {loading ? 'Planning...' : 'Plan Format'}
+            </button>
           </div>
 
-          {/* Tab Navigation */}
-          <div style={{
-            display: 'flex',
-            gap: '32px',
-            marginBottom: '24px',
-            borderBottom: '1px solid #e2e8f0'
-          }}>
-            {tabs.map((tab) => (
+          {/* Style selector */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {PAPER_STYLES.map((s) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={s.id}
+                onClick={() => setPaperStyle(s.id)}
+                title={s.desc}
                 style={{
-                  padding: '12px 0',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: activeTab === tab ? '#2d3748' : '#718096',
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  border: paperStyle === s.id ? '1px solid #4a5568' : '1px solid #e5e7eb',
+                  backgroundColor: paperStyle === s.id ? '#1a202c' : '#fff',
+                  color: paperStyle === s.id ? '#fff' : '#4a5568',
+                  fontSize: '12px',
+                  fontWeight: 500,
                   cursor: 'pointer',
-                  transition: 'color 0.2s, border-color 0.2s',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== tab) {
-                    e.currentTarget.style.color = '#4a5568';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== tab) {
-                    e.currentTarget.style.color = '#718096';
-                  }
+                  transition: 'all 0.12s',
                 }}
               >
-                {tab}
+                {s.label}
               </button>
             ))}
           </div>
 
-          {/* Documents List or Empty State */}
-          {filteredDocuments.length > 0 ? (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '16px',
-              padding: '0 20px'
-            }}>
-              {filteredDocuments.map((doc) => (
-                <div
-                  key={doc.id}
-                  onClick={() => handleDocumentClick(doc)}
-                  style={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '16px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#cbd5e0';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#e2e8f0';
-                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    marginBottom: '8px'
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}>
-                      <Icon name="document" size={16} color="#4a5568" />
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        backgroundColor: doc.status === 'published' ? '#dcfce7' : '#fef3c7',
-                        color: doc.status === 'published' ? '#166534' : '#92400e'
-                      }}>
-                        {doc.status === 'published' ? 'Published' : 'Draft'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e) => handleDeleteDocument(doc, e)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#9ca3af',
-                        cursor: 'pointer',
-                        padding: '4px',
-                        borderRadius: '4px',
-                        transition: 'color 0.2s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#ef4444';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = '#9ca3af';
-                      }}
-                    >
-                      <Icon name="delete" size={14} />
-                    </button>
-                  </div>
-                  
-                  <h3 style={{
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#1a202c',
-                    margin: '0 0 8px 0',
-                    lineHeight: '1.3',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical'
-                  }}>
-                    {doc.title || 'Untitled'}
-                  </h3>
-                  
-                  <p style={{
-                    fontSize: '14px',
-                    color: '#4a5568',
-                    margin: '0 0 12px 0',
-                    lineHeight: '1.4',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical'
-                  }}>
-                    {doc.content ? doc.content.slice(0, 150) + (doc.content.length > 150 ? '...' : '') : 'No content'}
-                  </p>
-                  
-                  <div style={{
-                    fontSize: '12px',
-                    color: '#9ca3af',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <span>
-                      Updated {new Date(doc.updatedAt).toLocaleDateString()}
-                    </span>
-                    <span>
-                      {Math.ceil(doc.content.length / 250)} min read
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              textAlign: 'center',
-              padding: '60px 20px',
-              color: '#718096'
-            }}>
-              <div style={{
-                fontSize: '48px',
-                marginBottom: '16px'
-              }}>
-                <Icon name="document" size={48} color="#718096" />
-              </div>
-              <div style={{
-                fontSize: '16px',
-                lineHeight: '1.5'
-              }}>
-                {searchTerm ? (
-                  <>
-                    <p>No documents found for "{searchTerm}"</p>
-                    <p>Try a different search term</p>
-                  </>
-                ) : (
-                  <>
-                    <p>No documents yet</p>
-                    <p>Create your first document to get started</p>
-                  </>
-                )}
+          {/* Loading indicator */}
+          {loading && (
+            <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+              <div style={{ width: '16px', height: '16px', border: '2px solid #d1d5db', borderTop: '2px solid #4a5568', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 500, color: '#1a202c' }}>Planning your format...</div>
+                <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Creating an {PAPER_STYLES.find(s => s.id === paperStyle)?.label.toLowerCase()} outline for "{topic}"</div>
               </div>
             </div>
           )}
-        </main>
-      </div>
 
-      {/* Floating Knowledge Graph Button */}
-      <button
-        onClick={() => {
-          if (!knowledgeGraph) {
-            loadKnowledgeGraph();
-          }
-          setShowKnowledgeGraphModal(true);
-        }}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center text-xl hover:scale-105"
-        title="View Knowledge Graph"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="w-6 h-6" fill="currentColor">
-          <path d="m25.24,28l13,13-13,13-4.24-4.24,5.76-5.76h0s-7.76,0-7.76,0c-8.5,0-14-5.5-14-14s5.5-14,14-14h9v6h-9c-5.16,0-8,2.84-8,8s2.84,8,8,8h7.76l-5.76-5.76,4.24-4.24Zm24.76-18h-18v18h18V10Zm-10,22v18h18v-18h-18Z"/>
-        </svg>
-      </button>
+          {/* Error message */}
+          {error && (
+            <div style={{ marginTop: '10px', padding: '8px 12px', backgroundColor: '#fef2f2', borderRadius: '6px', fontSize: '12px', color: '#991b1b' }}>
+              {error}
+            </div>
+          )}
+        </div>
 
-      {/* Knowledge Graph Modal */}
-      <KnowledgeGraphModal
-        isOpen={showKnowledgeGraphModal}
-        onClose={() => setShowKnowledgeGraphModal(false)}
-        graphData={knowledgeGraph}
-        onRefresh={loadKnowledgeGraph}
-      />
+        {/* Documents */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#1a202c', margin: 0 }}>
+            {searchTerm ? `Results for "${searchTerm}"` : 'Recent documents'}
+          </h2>
+          <span style={{ fontSize: '12px', color: '#9ca3af' }}>{filtered.length} document{filtered.length !== 1 ? 's' : ''}</span>
+        </div>
+
+        {filtered.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', border: '1px solid #f0f0f0', borderRadius: '10px', overflow: 'hidden' }}>
+            {filtered.map((doc) => (
+              <div key={doc.id} onClick={() => navigate(`/editor/${doc.id}`)}
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 18px', backgroundColor: '#fff', cursor: 'pointer', transition: 'background-color 0.12s', borderBottom: '1px solid #f9f9f9' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fafafa'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#fff'; }}
+              >
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon name="document" size={15} color="#9ca3af" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a202c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {doc.title || 'Untitled'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {doc.content ? doc.content.slice(0, 100) : 'No content'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                  <span style={{ fontSize: '12px', color: '#c4c4c4' }}>
+                    {new Date(doc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                  <button onClick={(e) => handleDeleteDocument(doc, e)}
+                    style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.12s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#d1d5db'; }}
+                  >
+                    <Icon name="delete" size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+            {searchTerm ? (
+              <p style={{ fontSize: '14px' }}>No documents found for "{searchTerm}"</p>
+            ) : (
+              <>
+                <div style={{ fontSize: '36px', marginBottom: '12px', opacity: 0.4 }}>
+                  <Icon name="document" size={36} color="#9ca3af" />
+                </div>
+                <p style={{ fontSize: '15px', fontWeight: 500, color: '#6b7280', marginBottom: '4px' }}>No documents yet</p>
+                <p style={{ fontSize: '13px' }}>Create a new document to start writing and using AI agents.</p>
+              </>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* ── Research Question Refinement Wizard ─────────────────────── */}
+      {wizardOpen && (
+        <>
+          <div onClick={() => setWizardOpen(false)} style={{
+            position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.35)',
+            backdropFilter: 'blur(4px)', zIndex: 100,
+          }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: '480px', maxHeight: '80vh', backgroundColor: '#fff', borderRadius: '16px',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.2)', zIndex: 101,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f0f0f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '20px' }}>🤔</span>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#1a202c' }}>Refine Your Research Question</div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>Answer 3 questions to sharpen your focus</div>
+                  </div>
+                </div>
+                <button onClick={() => setWizardOpen(false)} style={{
+                  border: 'none', background: '#f3f4f6', borderRadius: '8px', width: '28px', height: '28px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#6b7280', fontSize: '16px',
+                }}>×</button>
+              </div>
+              <div style={{ marginTop: '10px', padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', fontSize: '13px', color: '#4a5568' }}>
+                Topic: <strong>{wizardTopic}</strong>
+              </div>
+            </div>
+
+            {/* Conversation */}
+            <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+              {/* Progress dots */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+                {[0, 1, 2].map(i => {
+                  const userCount = wizardConvo.filter(m => m.role === 'user').length;
+                  const done = userCount > i;
+                  const active = userCount === i;
+                  return (
+                    <div key={i} style={{
+                      width: done ? '24px' : '8px', height: '8px', borderRadius: '4px',
+                      backgroundColor: done ? '#059669' : active ? '#3b82f6' : '#e5e7eb',
+                      transition: 'all 0.3s',
+                    }} />
+                  );
+                })}
+              </div>
+
+              {wizardConvo.map((msg, i) => (
+                <div key={i} style={{
+                  marginBottom: '12px',
+                  display: 'flex',
+                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                }}>
+                  <div style={{
+                    maxWidth: '85%',
+                    padding: '10px 14px',
+                    borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                    backgroundColor: msg.role === 'user' ? '#1a202c' : '#f3f4f6',
+                    color: msg.role === 'user' ? '#fff' : '#1a202c',
+                    fontSize: '13px', lineHeight: 1.5,
+                  }}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+
+              {wizardLoading && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
+                  <div style={{ padding: '10px 14px', borderRadius: '12px 12px 12px 4px', backgroundColor: '#f3f4f6', display: 'flex', gap: '4px' }}>
+                    {[0, 1, 2].map(i => (
+                      <div key={i} style={{
+                        width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#9ca3af',
+                        animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
+                      }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Refined question result */}
+              {refinedQuestion && (
+                <div style={{
+                  marginTop: '16px', padding: '16px', backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0', borderRadius: '12px',
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                    Your refined research question
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 500, color: '#1a202c', lineHeight: 1.5, fontFamily: "'Georgia', serif", fontStyle: 'italic' }}>
+                    {refinedQuestion}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button onClick={useRefinedQuestion}
+                      style={{
+                        flex: 1, padding: '9px', border: 'none', borderRadius: '8px',
+                        backgroundColor: '#1a202c', color: '#fff', fontSize: '13px',
+                        fontWeight: 500, cursor: 'pointer', transition: 'background-color 0.15s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#2d3748'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1a202c'; }}
+                    >
+                      Use this question
+                    </button>
+                    <button onClick={() => setWizardOpen(false)}
+                      style={{
+                        padding: '9px 16px', border: '1px solid #e5e7eb', borderRadius: '8px',
+                        backgroundColor: '#fff', color: '#6b7280', fontSize: '13px',
+                        fontWeight: 500, cursor: 'pointer',
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input area */}
+            {!refinedQuestion && (
+              <div style={{ padding: '12px 24px 16px', borderTop: '1px solid #f0f0f0' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Type your answer..."
+                    value={wizardInput}
+                    onChange={(e) => setWizardInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleWizardReply(); }}
+                    disabled={wizardLoading || wizardConvo.length === 0}
+                    style={{
+                      flex: 1, padding: '9px 14px', borderRadius: '8px', border: '1px solid #e5e7eb',
+                      fontSize: '13px', outline: 'none', transition: 'border-color 0.15s',
+                    }}
+                    onFocus={(e) => { e.target.style.borderColor = '#9ca3af'; }}
+                    onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; }}
+                  />
+                  <button onClick={handleWizardReply}
+                    disabled={wizardLoading || !wizardInput.trim()}
+                    style={{
+                      padding: '9px 16px', borderRadius: '8px', border: 'none',
+                      backgroundColor: wizardLoading || !wizardInput.trim() ? '#d1d5db' : '#1a202c',
+                      color: '#fff', fontSize: '13px', fontWeight: 500,
+                      cursor: wizardLoading || !wizardInput.trim() ? 'not-allowed' : 'pointer',
+                    }}
+                  >Reply</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <style>{`@keyframes pulse { 0%,80%,100% { opacity:.3; transform:scale(.8); } 40% { opacity:1; transform:scale(1); } }`}</style>
+        </>
+      )}
     </div>
   );
 };

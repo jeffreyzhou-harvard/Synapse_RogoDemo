@@ -76,7 +76,7 @@ const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
 
     try {
       // Call the backend to improve the document with the accepted suggestion
-      const response = await fetch('http://localhost:8000/accept-suggestion', {
+      const response = await fetch('/accept-suggestion', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -136,7 +136,7 @@ const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     console.log('Starting mention detection...');
     setIsLoadingMentions(true);
     try {
-      const response = await fetch('http://localhost:8080/detect-mentions', {
+      const response = await fetch('/detect-mentions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -338,7 +338,7 @@ const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
             gap: '8px'
           }}>
             <Icon name="comment" size={16} color="#374151" />
-            <span>Midlayer Assistant</span>
+            <span>Synapse Assistant</span>
           </div>
           
           <div style={{
