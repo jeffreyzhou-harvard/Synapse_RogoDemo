@@ -739,10 +739,10 @@ const SynapsePage: React.FC = () => {
             {!claims.length && !isIngesting && !isExtracting && (
               <div style={{ textAlign: 'center', marginBottom: '20px', animation: 'fadeIn 0.5s ease' }}>
                 <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#ffffff', marginBottom: '6px', letterSpacing: '-0.5px' }}>
-                  Verify before you trust
+                  Don't trust. Verify.
                 </h1>
-                <p style={{ fontSize: '13px', color: '#666666', maxWidth: '480px', margin: '0 auto', marginBottom: '16px' }}>
-                  Paste any URL, text, or audio. Synapse extracts every claim and cross-references it against academic papers, institutional sources, and counter-evidence.
+                <p style={{ fontSize: '13px', color: '#666666', maxWidth: '520px', margin: '0 auto', marginBottom: '16px' }}>
+                  Multi-agent verification pipeline: atomic claim decomposition, evidence retrieval from Semantic Scholar & Perplexity Sonar, source quality scoring, verdict synthesis with confidence levels, and full provenance tracing — streamed live.
                 </p>
                 {/* Preloaded examples */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '700px', margin: '0 auto' }}>
