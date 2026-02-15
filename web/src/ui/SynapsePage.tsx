@@ -744,82 +744,78 @@ const SynapsePage: React.FC = () => {
                 <p style={{ fontSize: '13px', color: '#666666', maxWidth: '520px', margin: '0 auto', marginBottom: '16px' }}>
                   Multi-agent verification pipeline: atomic claim decomposition, evidence retrieval from Semantic Scholar & Perplexity Sonar, source quality scoring, verdict synthesis with confidence levels, and full provenance tracing — streamed live.
                 </p>
-                {/* Preloaded examples */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '700px', margin: '0 auto' }}>
-                  {PRELOADED_EXAMPLES.map((ex, i) => {
-                    const vc = VERDICT_COLORS[ex.verdict] || VERDICT_COLORS.unsupported;
-                    return (
-                      <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}
-                        style={{
-                          padding: '6px 10px', borderRadius: '6px', border: `1px solid ${vc.border}`,
-                          backgroundColor: vc.bg, color: vc.text, fontSize: '10px', fontWeight: 600,
-                          cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '5px',
-                          animation: `fadeIn 0.3s ease ${i * 0.08}s both`,
-                        }}>
-                        <span>{ex.icon}</span>
-                        <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {ex.claim.length > 40 ? ex.claim.slice(0, 40) + '...' : ex.claim}
-                        </span>
-                        <span style={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', opacity: 0.7 }}>
-                          {ex.verdict.replace('_', ' ')}
-                        </span>
-                      </button>
-                    );
-                  })}
+                {/* Try these — subtle inline examples */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '600px', margin: '0 auto' }}>
+                  <span style={{ fontSize: '10px', color: '#333', fontWeight: 600 }}>Try:</span>
+                  {PRELOADED_EXAMPLES.map((ex, i) => (
+                    <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}
+                      style={{
+                        padding: '3px 8px', borderRadius: '4px', border: '1px solid #1a1a1a',
+                        backgroundColor: 'transparent', color: '#555', fontSize: '10px', fontWeight: 500,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        animation: `fadeIn 0.3s ease ${i * 0.06}s both`,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#aaa'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#555'; }}
+                    >
+                      {ex.icon} {ex.claim.length > 35 ? ex.claim.slice(0, 35) + '...' : ex.claim}
+                    </button>
+                  ))}
                 </div>
 
                 {/* ─── Live Tweet Ticker ─────────────────────────────── */}
                 {trendingTweets.length > 0 && (
-                  <div style={{ marginTop: '20px', position: 'relative' }}>
-                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#333', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                  <div style={{ marginTop: '24px', position: 'relative' }}>
+                    <div style={{
+                      width: '40px', height: '1px', background: '#222', margin: '0 auto 16px',
+                    }} />
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#333', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s ease-in-out infinite' }} />
-                      Live from 𝕏 — tweets with verifiable claims
+                      Live from 𝕏
                     </div>
-                    {/* Fade edges */}
-                    <div className="scroll-ticker-wrap" style={{ position: 'relative', overflow: 'hidden', maskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)' }}>
+                    <div className="scroll-ticker-wrap" style={{ position: 'relative', overflow: 'hidden', maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)' }}>
                       <div style={{
                         display: 'flex', gap: '12px', width: 'max-content',
-                        animation: `scroll-ticker ${Math.max(30, trendingTweets.length * 4)}s linear infinite`,
+                        animation: `scroll-ticker ${Math.max(40, trendingTweets.length * 5)}s linear infinite`,
                       }}>
-                        {/* Duplicate for seamless loop */}
                         {[...trendingTweets, ...trendingTweets].map((tweet, i) => (
                           <button key={`${tweet.id}-${i}`}
                             onClick={() => { setInputMode('url'); setInputValue(tweet.url); }}
                             style={{
-                              flexShrink: 0, width: '280px', padding: '10px 12px',
-                              borderRadius: '8px', border: '1px solid #1a1a1a',
-                              background: 'linear-gradient(135deg, #0a0a0a 0%, #0f0f0f 100%)',
-                              cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.2s',
-                              display: 'flex', flexDirection: 'column', gap: '6px',
+                              flexShrink: 0, width: '300px', padding: '12px 14px',
+                              borderRadius: '10px', border: '1px solid #141414',
+                              background: '#080808',
+                              cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                              display: 'flex', flexDirection: 'column', gap: '8px',
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.borderColor = '#333')}
-                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1a1a1a')}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.background = '#0c0c0c'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = '#141414'; e.currentTarget.style.background = '#080808'; }}
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {tweet.avatar ? (
-                                <img src={tweet.avatar} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                                <img src={tweet.avatar} alt="" style={{ width: '22px', height: '22px', borderRadius: '50%' }} />
                               ) : (
-                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#1a1a1a' }} />
+                                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#1a1a1a' }} />
                               )}
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#ccc' }}>{tweet.author}</span>
-                                <span style={{ fontSize: '10px', color: '#444', marginLeft: '4px' }}>{tweet.handle}</span>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#bbb' }}>{tweet.author}</span>
+                                <span style={{ fontSize: '10px', color: '#3a3a3a', marginLeft: '4px' }}>{tweet.handle}</span>
                               </div>
-                              <span style={{ fontSize: '10px', color: '#1d9bf0' }}>𝕏</span>
+                              <span style={{ fontSize: '11px', color: '#1d9bf0' }}>𝕏</span>
                             </div>
                             <div style={{
-                              fontSize: '11px', color: '#999', lineHeight: 1.4,
+                              fontSize: '12px', color: '#888', lineHeight: 1.5,
                               overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any,
                             }}>
                               {tweet.text}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '9px', color: '#444' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '10px', color: '#333' }}>
                               <span>❤️ {tweet.likes > 999 ? `${(tweet.likes / 1000).toFixed(1)}k` : tweet.likes}</span>
                               <span>🔁 {tweet.retweets > 999 ? `${(tweet.retweets / 1000).toFixed(1)}k` : tweet.retweets}</span>
                               <div style={{ flex: 1 }} />
                               <span style={{
-                                fontSize: '8px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase',
-                                padding: '2px 6px', borderRadius: '3px', border: '1px solid rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)',
+                                fontSize: '9px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase',
+                                padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(34,197,94,0.15)', background: 'rgba(34,197,94,0.04)',
                               }}>Verify →</span>
                             </div>
                           </button>
