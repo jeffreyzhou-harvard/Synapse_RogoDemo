@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0f1a;
+      color: #e5e7eb;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .header .logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .header .tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+      font-weight: 600;
+    }
+    .desc {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .input-group {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    input {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #1f2937;
+      background: #111827;
+      color: #e5e7eb;
+      font-size: 12px;
+      outline: none;
+    }
+    input:focus { border-color: #22c55e; }
+    input::placeholder { color: #4b5563; }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      background: #ffffff;
+      color: #000000;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #e5e7eb; }
+    .divider {
+      height: 1px;
+      background: #1f2937;
+      margin: 12px 0;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    .feature .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #22c55e;
+      flex-shrink: 0;
+    }
+    .footer {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 10px;
+      color: #374151;
+    }
+    .footer a { color: #6b7280; text-decoration: none; }
+    .footer a:hover { color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">⚡</div>
+    <h1>Synapse</h1>
+    <span class="tag">BETA</span>
+  </div>
+  <p class="desc">Verify claims in any tweet, article, or text. Powered by multi-agent AI with academic and institutional sources.</p>
+
+  <div class="input-group">
+    <input type="text" id="urlInput" placeholder="Paste a tweet or article URL...">
+    <button class="btn" id="verifyBtn">Verify</button>
+  </div>
+
+  <button class="btn" id="currentPageBtn" style="width: 100%; background: transparent; color: #9ca3af; border: 1px solid #1f2937; margin-bottom: 4px;">
+    Verify Current Page
+  </button>
+
+  <div class="divider"></div>
+
+  <div class="feature"><span class="dot"></span> Verify button on every tweet in your feed</div>
+  <div class="feature"><span class="dot"></span> 6-step verification with academic sources</div>
+  <div class="feature"><span class="dot"></span> Share results back to X</div>
+
+  <div class="footer">
+    <a href="https://tree-hacks-2026.vercel.app" target="_blank">usesynapse.org</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

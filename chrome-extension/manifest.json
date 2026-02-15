@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Synapse — Verify Claims",
+  "version": "1.0.0",
+  "description": "Fact-check any tweet or article with one click. Powered by Synapse.",
+  "permissions": ["activeTab"],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  }
+}

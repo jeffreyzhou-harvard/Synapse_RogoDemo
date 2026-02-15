@@ -1,0 +1,41 @@
+.synapse-verify-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%);
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.synapse-verify-btn:hover {
+  background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.02);
+}
+
+.synapse-verify-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.synapse-verify-btn .synapse-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: synapse-pulse 2s ease-in-out infinite;
+}
+
+@keyframes synapse-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}

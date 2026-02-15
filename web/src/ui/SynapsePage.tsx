@@ -178,6 +178,24 @@ const SynapsePage: React.FC = () => {
   // File input
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-ingest from ?url= query param (Chrome extension support)
+  const autoIngestDone = useRef(false);
+  useEffect(() => {
+    if (autoIngestDone.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlParam = params.get('url');
+    if (urlParam) {
+      autoIngestDone.current = true;
+      setInputValue(urlParam);
+      setInputMode('url');
+      // Trigger ingest after state updates
+      setTimeout(() => {
+        const btn = document.querySelector('[data-ingest-btn]') as HTMLButtonElement;
+        if (btn) btn.click();
+      }, 300);
+    }
+  }, []);
+
   // Auto-scroll trace
   useEffect(() => {
     if (traceRef.current) {
@@ -778,7 +796,7 @@ const SynapsePage: React.FC = () => {
                 />
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                <button onClick={handleIngest} disabled={isIngesting || isExtracting || !inputValue.trim()}
+                <button data-ingest-btn onClick={handleIngest} disabled={isIngesting || isExtracting || !inputValue.trim()}
                   style={{
                     flex: 1, padding: '10px 18px', borderRadius: '0 6px 0 0',
                     border: '1px solid #ffffff', backgroundColor: '#ffffff', color: '#000000',

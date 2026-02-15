@@ -289,8 +289,49 @@ def _fetch_via_sonar(url: str) -> Dict[str, str]:
         print(f"[URL Extract Sonar Fallback] Error: {e}")
     return {"title": url, "text": "", "url": url, "error": "Sonar fallback also failed"}
 
+def _is_tweet_url(url: str) -> bool:
+    """Check if URL is a Twitter/X tweet."""
+    return bool(re.match(r'https?://(twitter\.com|x\.com)/\w+/status/\d+', url))
+
+def _extract_tweet(url: str) -> Dict[str, str]:
+    """Extract tweet content via Sonar (X blocks direct scraping)."""
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if not api_key:
+        return {"title": url, "text": "", "url": url, "source_type": "tweet", "error": "No Perplexity key"}
+    try:
+        print(f"[Tweet Extract] Fetching tweet via Sonar: {url}")
+        resp = httpx.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "You are a tweet extraction assistant. Given a tweet URL, reproduce the EXACT tweet text, the author's name, their handle (@username), and the date if visible. Format:\n\nAuthor: [name]\nHandle: [@handle]\nDate: [date or 'unknown']\n\nTweet:\n[exact tweet text]\n\nThread (if any):\n[additional tweets in thread]"},
+                    {"role": "user", "content": f"Extract the full content of this tweet:\n{url}"},
+                ],
+            },
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if text and len(text.split()) > 5:
+                # Parse author/handle from response
+                author_match = re.search(r'Author:\s*(.+)', text)
+                handle_match = re.search(r'Handle:\s*(@\w+)', text)
+                author = author_match.group(1).strip() if author_match else "Unknown"
+                handle = handle_match.group(1).strip() if handle_match else ""
+                title = f"Tweet by {author} {handle}".strip()
+                return {"title": title, "text": text, "url": url, "source_type": "tweet", "author": author, "handle": handle}
+    except Exception as e:
+        print(f"[Tweet Extract] Error: {e}")
+    return {"title": url, "text": "", "url": url, "source_type": "tweet", "error": "Failed to extract tweet"}
+
 def extract_url_content(url: str) -> Dict[str, str]:
     """Fetch and extract clean text from a URL. Falls back to Sonar if blocked."""
+    # Detect tweet URLs and use specialized extraction
+    if _is_tweet_url(url):
+        return _extract_tweet(url)
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
