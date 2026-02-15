@@ -227,33 +227,93 @@ def search_perplexity(query: str, focus: str = "") -> Dict:
 # URL content extraction
 # ---------------------------------------------------------------------------
 
-def extract_url_content(url: str) -> Dict[str, str]:
-    """Fetch and extract clean text from a URL."""
+_BOT_WALL_MARKERS = [
+    "just a moment", "enable javascript", "checking your browser",
+    "cloudflare", "captcha", "access denied", "please verify",
+    "ray id", "cf-browser-verification", "bot detection",
+]
+
+def _is_bot_wall(text: str) -> bool:
+    """Detect if scraped text is a Cloudflare / bot-protection wall."""
+    lower = text.lower()
+    hits = sum(1 for m in _BOT_WALL_MARKERS if m in lower)
+    # If very short AND contains bot markers → wall
+    if len(text.split()) < 100 and hits >= 1:
+        return True
+    # If multiple markers even in longer text
+    if hits >= 3:
+        return True
+    return False
+
+def _strip_html(raw_html: str) -> tuple:
+    """Strip HTML to plain text, return (title, text)."""
+    import re as _re
+    # Extract title before stripping
+    title_match = _re.search(r'<title[^>]*>(.*?)</title>', raw_html, _re.IGNORECASE | _re.DOTALL)
+    title = title_match.group(1).strip() if title_match else ""
+    # Remove script/style
+    clean = _re.sub(r'<script[^>]*>.*?</script>', '', raw_html, flags=_re.DOTALL | _re.IGNORECASE)
+    clean = _re.sub(r'<style[^>]*>.*?</style>', '', clean, flags=_re.DOTALL | _re.IGNORECASE)
+    clean = _re.sub(r'<[^>]+>', ' ', clean)
+    clean = _re.sub(r'\s+', ' ', clean).strip()
+    return title, clean
+
+def _fetch_via_sonar(url: str) -> Dict[str, str]:
+    """Use Perplexity Sonar to read and summarize a URL's content."""
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if not api_key:
+        return {"title": url, "text": "", "url": url, "error": "No Perplexity key for fallback"}
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Synapse Fact Checker)"}
+        print(f"[URL Extract] Direct scrape failed/blocked — falling back to Sonar for {url}")
+        resp = httpx.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "You are a content extraction assistant. Read the given URL and reproduce its full article content as faithfully as possible. Include all factual claims, statistics, quotes, and key arguments. Do NOT summarize — reproduce the content."},
+                    {"role": "user", "content": f"Read this URL and reproduce its full article content:\n{url}"},
+                ],
+            },
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if text and len(text.split()) > 30:
+                # Derive title from first line or sentence
+                first_line = text.split('\n')[0].strip().strip('#').strip()
+                title = first_line[:120] if len(first_line) > 5 else url
+                return {"title": title, "text": text, "url": url}
+    except Exception as e:
+        print(f"[URL Extract Sonar Fallback] Error: {e}")
+    return {"title": url, "text": "", "url": url, "error": "Sonar fallback also failed"}
+
+def extract_url_content(url: str) -> Dict[str, str]:
+    """Fetch and extract clean text from a URL. Falls back to Sonar if blocked."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
         resp = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
-        html = resp.text
+        title, text = _strip_html(resp.text)
+        title = title or url
 
-        # Simple extraction: strip HTML tags, get text
-        # Remove script and style elements
-        import re as _re
-        html = _re.sub(r'<script[^>]*>.*?</script>', '', html, flags=_re.DOTALL | _re.IGNORECASE)
-        html = _re.sub(r'<style[^>]*>.*?</style>', '', html, flags=_re.DOTALL | _re.IGNORECASE)
-        html = _re.sub(r'<[^>]+>', ' ', html)
-        html = _re.sub(r'\s+', ' ', html).strip()
-
-        # Try to extract title
-        title_match = _re.search(r'<title[^>]*>(.*?)</title>', resp.text, _re.IGNORECASE | _re.DOTALL)
-        title = title_match.group(1).strip() if title_match else url
+        # Check for bot walls or garbage content
+        if _is_bot_wall(text) or len(text.split()) < 50:
+            print(f"[URL Extract] Bot wall or too short ({len(text.split())} words) — trying Sonar")
+            return _fetch_via_sonar(url)
 
         # Limit to first ~5000 words
-        words = html.split()
+        words = text.split()
         text = ' '.join(words[:5000])
 
         return {"title": title, "text": text, "url": url}
     except Exception as e:
-        print(f"[URL Extract] Error: {e}")
-        return {"title": url, "text": "", "url": url, "error": str(e)}
+        print(f"[URL Extract] Direct fetch error: {e} — trying Sonar")
+        return _fetch_via_sonar(url)
 
 
 # ---------------------------------------------------------------------------
