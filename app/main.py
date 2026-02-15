@@ -658,8 +658,16 @@ class PlanRequest(BaseModel):
 
 
 @app.get("/health")
-def health() -> Dict[str, bool]:
-    return {"ok": True}
+def health() -> Dict[str, Any]:
+    akey = os.getenv("ANTHROPIC_API_KEY", "")
+    pkey = os.getenv("PERPLEXITY_API_KEY", "")
+    return {
+        "ok": True,
+        "anthropic_key_len": len(akey),
+        "anthropic_key_preview": f"{akey[:8]}...{akey[-4:]}" if len(akey) > 12 else "(missing)",
+        "perplexity_key_len": len(pkey),
+        "default_model": os.getenv("DEFAULT_MODEL", "(not set)"),
+    }
 
 
 @app.get("/llm/status")
