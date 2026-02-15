@@ -10,4 +10,7 @@ requests~=2.31
 anthropic~=0.34
 python-multipart~=0.0.9
 apscheduler~=3.10
+deepgram-sdk~=5.3
+httpx>=0.21
+pdfplumber~=0.11
 
