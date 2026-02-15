@@ -1,5 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
+// ─── API Base URL (Railway backend for real SSE streaming) ─────────────────
+// Local dev: empty string (Vite proxy handles /api → localhost:4000)
+// Production: Railway backend URL
+const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://web-production-d3011.up.railway.app';
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 interface ExtractedClaim {
@@ -208,7 +213,7 @@ const SynapsePage: React.FC = () => {
     const doneClaims = claims.filter(c => c.status === 'done');
     if (doneClaims.length === 0) return;
     try {
-      const resp = await fetch('/api/reports', {
+      const resp = await fetch(`${API_BASE}/api/reports`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,7 +269,7 @@ const SynapsePage: React.FC = () => {
       const isUrl = inputValue.startsWith('http://') || inputValue.startsWith('https://');
       const body = isUrl ? { url: inputValue } : { text: inputValue };
 
-      const resp = await fetch('/api/ingest', {
+      const resp = await fetch(`${API_BASE}/api/ingest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -303,7 +308,7 @@ const SynapsePage: React.FC = () => {
     addTrace('Extracting claims...', 'step', 0, 'sonar');
 
     try {
-      const resp = await fetch('/api/extract-claims', {
+      const resp = await fetch(`${API_BASE}/api/extract-claims`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -357,7 +362,7 @@ const SynapsePage: React.FC = () => {
     addTrace(`Verifying: "${claim.original.slice(0, 100)}"`, 'step');
 
     try {
-      const resp = await fetch('/api/verify', {
+      const resp = await fetch(`${API_BASE}/api/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ claim: claim.normalized || claim.original }),
@@ -567,7 +572,7 @@ const SynapsePage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const resp = await fetch('/api/ingest-audio', { method: 'POST', body: formData });
+      const resp = await fetch(`${API_BASE}/api/ingest-audio`, { method: 'POST', body: formData });
       if (!resp.ok) {
         addTrace('Audio ingestion failed', 'error');
         setIsIngesting(false);
