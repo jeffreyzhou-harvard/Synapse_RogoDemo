@@ -1,4 +1,4 @@
-const SYNAPSE_URL = 'https://tree-hacks-2026.vercel.app'; // Update to your Vercel URL
+const SYNAPSE_URL = 'https://www.usesynapse.org';
 
 document.getElementById('verifyBtn').addEventListener('click', () => {
   const url = document.getElementById('urlInput').value.trim();

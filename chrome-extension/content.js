@@ -1,7 +1,7 @@
 // Synapse — Verify Claims Chrome Extension
 // Injects a "Verify" button on every tweet in the X/Twitter feed
 
-const SYNAPSE_URL = 'https://tree-hacks-2026.vercel.app'; // Update to your Vercel URL
+const SYNAPSE_URL = 'https://www.usesynapse.org';
 
 function createVerifyButton(tweetUrl) {
   const btn = document.createElement('button');
