@@ -322,17 +322,30 @@ def extract_url_content(url: str) -> Dict[str, str]:
 
 def extract_claims(text: str) -> List[Dict]:
     """Extract verifiable factual claims from text."""
-    prompt = f"""Analyze the following text and extract every discrete, verifiable factual claim.
+    prompt = f"""Extract EVERY discrete, verifiable factual claim from this text. Be thorough — a 1000+ word article should yield 8-20 claims.
+
+INCLUDE these types of claims:
+- Statistics and numbers ("40 percent of elephants...", "costs $X billion")
+- Causal/directional claims ("X causes Y", "X increases risk of Y")
+- Research findings ("studies show...", "researchers found...")
+- Categorical facts ("X is the leading cause of Y", "X is classified as Y")
+- Comparative claims ("X is more common than Y", "X has increased since Y")
+- Historical/temporal claims ("X was discovered in Y", "X has been happening since Y")
+
+EXCLUDE (do NOT extract):
+- Opinions, subjective statements, rhetorical questions
+- Author/researcher biographical info (names, titles, affiliations alone)
+- Trivial attributions ("according to Dr. X" without a factual claim attached)
+- Article metadata (publication date, author byline)
+- Vague statements that cannot be verified
 
 Rules:
-- Extract ONLY factual claims (things that can be verified against evidence)
-- Skip opinions, subjective statements, rhetorical questions, jokes
-- Each claim should be a single, atomic statement
-- Provide the original wording and a normalized version optimized for search
-- Tag each claim type: "quantitative" (has numbers), "directional" (more/less/better), "categorical" (X is Y), "provenance" (according to/studies show)
+- Each claim must be a single, atomic, independently verifiable statement
+- Provide the original wording and a normalized version optimized for academic search
+- Tag type: "quantitative" (has numbers), "directional" (causes/increases/decreases), "categorical" (X is Y), "provenance" (source-attributed finding)
 
 TEXT:
-{text[:4000]}
+{text[:6000]}
 
 Return ONLY a JSON array:
 [
@@ -344,7 +357,7 @@ Return ONLY a JSON array:
   }}
 ]
 
-Extract 3-10 claims. Return ONLY valid JSON, no markdown."""
+Extract 8-20 claims. Be thorough. Return ONLY valid JSON, no markdown."""
 
     raw = _call_llm(prompt, "You are a precise claim extraction engine. Return only valid JSON arrays.")
     parsed = _parse_json_from_llm(raw)
