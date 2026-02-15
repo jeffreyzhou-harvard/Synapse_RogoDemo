@@ -75,18 +75,18 @@ interface VerificationState {
 // ─── Constants ────────────────────────────────────────────────────────────
 
 const VERDICT_COLORS: Record<string, { bg: string; text: string; border: string; glow: string }> = {
-  supported:            { bg: '#052e16', text: '#4ade80', border: '#166534', glow: 'rgba(74,222,128,0.15)' },
-  partially_supported:  { bg: '#1c1917', text: '#fbbf24', border: '#854d0e', glow: 'rgba(251,191,36,0.15)' },
-  exaggerated:          { bg: '#1c1917', text: '#fb923c', border: '#9a3412', glow: 'rgba(251,146,60,0.15)' },
-  contradicted:         { bg: '#1c0a0a', text: '#f87171', border: '#991b1b', glow: 'rgba(248,113,113,0.15)' },
-  unsupported:          { bg: '#1a1a2e', text: '#94a3b8', border: '#334155', glow: 'rgba(148,163,184,0.1)' },
-  mixed:                { bg: '#1c1917', text: '#fbbf24', border: '#854d0e', glow: 'rgba(251,191,36,0.15)' },
+  supported:            { bg: '#0a1a0a', text: '#4ade80', border: '#1a3a1a', glow: 'rgba(74,222,128,0.12)' },
+  partially_supported:  { bg: '#1a1500', text: '#fbbf24', border: '#3a3000', glow: 'rgba(251,191,36,0.12)' },
+  exaggerated:          { bg: '#1a1000', text: '#fb923c', border: '#3a2000', glow: 'rgba(251,146,60,0.12)' },
+  contradicted:         { bg: '#1a0a0a', text: '#f87171', border: '#3a1a1a', glow: 'rgba(248,113,113,0.12)' },
+  unsupported:          { bg: '#111111', text: '#888888', border: '#222222', glow: 'rgba(136,136,136,0.08)' },
+  mixed:                { bg: '#1a1500', text: '#fbbf24', border: '#3a3000', glow: 'rgba(251,191,36,0.12)' },
 };
 
 const TIER_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  academic:      { label: 'Academic',      icon: '📄', color: '#818cf8' },
-  institutional: { label: 'Institutional', icon: '🏛️', color: '#60a5fa' },
-  journalism:    { label: 'Journalism',    icon: '📰', color: '#34d399' },
+  academic:      { label: 'Academic',      icon: '📄', color: '#a0a0a0' },
+  institutional: { label: 'Institutional', icon: '🏛️', color: '#c0c0c0' },
+  journalism:    { label: 'Journalism',    icon: '📰', color: '#b0b0b0' },
   counter:       { label: 'Counter',       icon: '⚔️', color: '#f87171' },
 };
 
@@ -118,23 +118,23 @@ interface AgentChip {
 }
 
 const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
-  claude:    { color: '#D4A574', label: 'Claude' },
-  sscholar:  { color: '#1857B6', label: 'S.Scholar' },
-  pubmed:    { color: '#0D9F6E', label: 'PubMed' },
-  sonar:     { color: '#20B2AA', label: 'Sonar' },
-  deepgram:  { color: '#7C3AED', label: 'Deepgram' },
+  claude:    { color: '#e8c8a0', label: 'Claude' },
+  sscholar:  { color: '#6b9bd2', label: 'S.Scholar' },
+  pubmed:    { color: '#5ec4a0', label: 'PubMed' },
+  sonar:     { color: '#6bccc8', label: 'Sonar' },
+  deepgram:  { color: '#a78bfa', label: 'Deepgram' },
 };
 
 const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
-  { id: 'extract',    service: 'sonar',    task: 'Extract',    label: 'Sonar · Extract',            color: '#20B2AA' },
-  { id: 'decompose',  service: 'claude',   task: 'Decompose',  label: 'Claude · Decompose',         color: '#D4A574' },
-  { id: 'sscholar',   service: 'sscholar', task: 'Papers',     label: 'S.Scholar · Papers',         color: '#1857B6' },
-  { id: 'sonar_web',  service: 'sonar',    task: 'Web',        label: 'Sonar · Web',                color: '#20B2AA' },
-  { id: 'sonar_counter', service: 'sonar', task: 'Counter',    label: 'Sonar · Counter',            color: '#20B2AA' },
-  { id: 'evaluate',   service: 'claude',   task: 'Evaluate',   label: 'Claude · Evaluate',          color: '#D4A574' },
-  { id: 'synthesize', service: 'claude',   task: 'Synthesize', label: 'Claude · Synthesize',        color: '#D4A574' },
-  { id: 'provenance', service: 'sonar',    task: 'Provenance', label: 'Sonar+Claude · Provenance',  color: '#20B2AA' },
-  { id: 'correct',    service: 'claude',   task: 'Correct',    label: 'Claude · Correct',           color: '#D4A574' },
+  { id: 'extract',    service: 'sonar',    task: 'Extract',    label: 'Sonar · Extract',            color: '#6bccc8' },
+  { id: 'decompose',  service: 'claude',   task: 'Decompose',  label: 'Claude · Decompose',         color: '#e8c8a0' },
+  { id: 'sscholar',   service: 'sscholar', task: 'Papers',     label: 'S.Scholar · Papers',         color: '#6b9bd2' },
+  { id: 'sonar_web',  service: 'sonar',    task: 'Web',        label: 'Sonar · Web',                color: '#6bccc8' },
+  { id: 'sonar_counter', service: 'sonar', task: 'Counter',    label: 'Sonar · Counter',            color: '#6bccc8' },
+  { id: 'evaluate',   service: 'claude',   task: 'Evaluate',   label: 'Claude · Evaluate',          color: '#e8c8a0' },
+  { id: 'synthesize', service: 'claude',   task: 'Synthesize', label: 'Claude · Synthesize',        color: '#e8c8a0' },
+  { id: 'provenance', service: 'sonar',    task: 'Provenance', label: 'Sonar+Claude · Provenance',  color: '#6bccc8' },
+  { id: 'correct',    service: 'claude',   task: 'Correct',    label: 'Claude · Correct',           color: '#e8c8a0' },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -555,7 +555,7 @@ const SynapsePage: React.FC = () => {
 
   return (
     <div style={{
-      height: '100vh', backgroundColor: '#0a0f1a', color: '#e2e8f0',
+      height: '100vh', backgroundColor: '#000000', color: '#e0e0e0',
       fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
@@ -565,31 +565,31 @@ const SynapsePage: React.FC = () => {
         @keyframes slideInH { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes glow { 0%, 100% { box-shadow: 0 0 8px rgba(251,191,36,0.3); } 50% { box-shadow: 0 0 20px rgba(251,191,36,0.6); } }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 8px rgba(255,255,255,0.2); } 50% { box-shadow: 0 0 20px rgba(255,255,255,0.4); } }
         @keyframes verdictPop { 0% { transform: scale(0.8); opacity: 0; } 50% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
         @keyframes agentPulse {
           0% { box-shadow: 0 0 0 0 var(--agent-glow); }
           50% { box-shadow: 0 0 12px 4px var(--agent-glow); }
           100% { box-shadow: 0 0 0 0 var(--agent-glow); }
         }
-        ::selection { background: rgba(251,191,36,0.3); }
+        ::selection { background: rgba(255,255,255,0.2); }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+        ::-webkit-scrollbar-thumb { background: #222222; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #333333; }
       `}</style>
 
       {/* ═══ Header ═══════════════════════════════════════════════════════ */}
       <header style={{
         padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid #1e293b', flexShrink: 0, backgroundColor: '#0a0f1a',
+        borderBottom: '1px solid #1a1a1a', flexShrink: 0, backgroundColor: '#000000',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ fontSize: '20px' }}>🧠</div>
+          <img src="/synapse-logo.svg" alt="Synapse" style={{ width: '24px', height: '24px', opacity: 0.9 }} />
           <div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.5px' }}>SYNAPSE</div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#fbbf24', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px' }}>SYNAPSE</div>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#666666', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
               Every claim, interrogated
             </div>
           </div>
@@ -598,7 +598,7 @@ const SynapsePage: React.FC = () => {
         {/* Summary bar */}
         {hasSummary && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', animation: 'fadeIn 0.4s ease' }}>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>{claims.length} claims analyzed:</span>
+            <span style={{ fontSize: '11px', color: '#666666' }}>{claims.length} claims analyzed:</span>
             {Object.entries(verdictCounts).map(([verdict, count]) => {
               const vc = VERDICT_COLORS[verdict] || VERDICT_COLORS.unsupported;
               return (
@@ -617,13 +617,13 @@ const SynapsePage: React.FC = () => {
         <button onClick={() => setShowTrace(p => !p)}
           style={{
             padding: '4px 10px', borderRadius: '6px', border: '1px solid',
-            borderColor: showTrace ? '#334155' : '#1e293b',
-            backgroundColor: showTrace ? '#0f172a' : 'transparent',
-            color: showTrace ? '#fbbf24' : '#475569',
+            borderColor: showTrace ? '#333333' : '#1a1a1a',
+            backgroundColor: showTrace ? '#111111' : 'transparent',
+            color: showTrace ? '#ffffff' : '#555555',
             fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
             display: 'flex', alignItems: 'center', gap: '5px',
           }}>
-          <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: traceLines.length > 0 ? '#fbbf24' : '#475569', animation: selectedClaim?.status === 'verifying' ? 'pulse 1s ease-in-out infinite' : 'none' }} />
+          <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: traceLines.length > 0 ? '#ffffff' : '#555555', animation: selectedClaim?.status === 'verifying' ? 'pulse 1s ease-in-out infinite' : 'none' }} />
           TRACE {traceLines.length > 0 && `(${traceLines.length})`}
         </button>
       </header>
@@ -631,17 +631,17 @@ const SynapsePage: React.FC = () => {
       {/* ═══ Input Bar (collapsible) ══════════════════════════════════════ */}
       {!inputCollapsed ? (
         <div style={{
-          padding: claims.length ? '12px 24px' : '24px 32px', borderBottom: '1px solid #1e293b',
-          background: 'linear-gradient(180deg, #0f172a 0%, #0a0f1a 100%)',
+          padding: claims.length ? '12px 24px' : '24px 32px', borderBottom: '1px solid #1a1a1a',
+          background: '#000000',
           transition: 'padding 0.3s ease', flexShrink: 0,
         }}>
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
             {!claims.length && !isIngesting && !isExtracting && (
               <div style={{ textAlign: 'center', marginBottom: '20px', animation: 'fadeIn 0.5s ease' }}>
-                <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#f8fafc', marginBottom: '6px', letterSpacing: '-0.5px' }}>
+                <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#ffffff', marginBottom: '6px', letterSpacing: '-0.5px' }}>
                   X-ray any claim
                 </h1>
-                <p style={{ fontSize: '13px', color: '#64748b', maxWidth: '480px', margin: '0 auto' }}>
+                <p style={{ fontSize: '13px', color: '#666666', maxWidth: '480px', margin: '0 auto' }}>
                   Paste a URL, article text, or drop an audio file. Synapse extracts every factual claim and runs deep multi-step verification.
                 </p>
               </div>
@@ -651,17 +651,17 @@ const SynapsePage: React.FC = () => {
                 <button onClick={() => setInputMode('url')}
                   style={{
                     flex: 1, padding: '6px 10px', border: '1px solid', borderRadius: '6px 0 0 0',
-                    borderColor: inputMode === 'url' ? '#fbbf24' : '#1e293b',
-                    backgroundColor: inputMode === 'url' ? 'rgba(251,191,36,0.1)' : 'transparent',
-                    color: inputMode === 'url' ? '#fbbf24' : '#64748b',
+                    borderColor: inputMode === 'url' ? '#ffffff' : '#1a1a1a',
+                    backgroundColor: inputMode === 'url' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    color: inputMode === 'url' ? '#ffffff' : '#555555',
                     fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
                   }}>🔗 URL</button>
                 <button onClick={() => setInputMode('text')}
                   style={{
                     flex: 1, padding: '6px 10px', border: '1px solid', borderRadius: '0 0 0 6px',
-                    borderColor: inputMode === 'text' ? '#fbbf24' : '#1e293b',
-                    backgroundColor: inputMode === 'text' ? 'rgba(251,191,36,0.1)' : 'transparent',
-                    color: inputMode === 'text' ? '#fbbf24' : '#64748b',
+                    borderColor: inputMode === 'text' ? '#ffffff' : '#1a1a1a',
+                    backgroundColor: inputMode === 'text' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    color: inputMode === 'text' ? '#ffffff' : '#555555',
                     fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
                   }}>📝 Text</button>
               </div>
@@ -670,31 +670,31 @@ const SynapsePage: React.FC = () => {
                   onKeyDown={e => e.key === 'Enter' && handleIngest()}
                   placeholder="Paste a URL — article, blog, YouTube, tweet..."
                   style={{
-                    flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b',
-                    borderRadius: '0', color: '#f8fafc', fontSize: '13px', outline: 'none',
+                    flex: 1, padding: '10px 14px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
+                    borderRadius: '0', color: '#ffffff', fontSize: '13px', outline: 'none',
                     fontFamily: "'JetBrains Mono', 'Fira Code', monospace", transition: 'border-color 0.15s',
                   }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#334155'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#1e293b'}
+                  onFocus={e => e.currentTarget.style.borderColor = '#333333'}
+                  onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
                 />
               ) : (
                 <textarea value={inputValue} onChange={e => setInputValue(e.target.value)}
                   placeholder="Paste text containing claims to verify..."
                   rows={2}
                   style={{
-                    flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b',
-                    borderRadius: '0', color: '#f8fafc', fontSize: '13px', outline: 'none', resize: 'vertical',
+                    flex: 1, padding: '10px 14px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
+                    borderRadius: '0', color: '#ffffff', fontSize: '13px', outline: 'none', resize: 'vertical',
                     fontFamily: "'Inter', sans-serif", lineHeight: 1.5, transition: 'border-color 0.15s',
                   }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#334155'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#1e293b'}
+                  onFocus={e => e.currentTarget.style.borderColor = '#333333'}
+                  onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
                 />
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
                 <button onClick={handleIngest} disabled={isIngesting || isExtracting || !inputValue.trim()}
                   style={{
                     flex: 1, padding: '10px 18px', borderRadius: '0 6px 0 0',
-                    border: '1px solid #fbbf24', backgroundColor: '#fbbf24', color: '#0a0f1a',
+                    border: '1px solid #ffffff', backgroundColor: '#ffffff', color: '#000000',
                     fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
                     opacity: (isIngesting || isExtracting || !inputValue.trim()) ? 0.5 : 1,
                   }}>
@@ -703,7 +703,7 @@ const SynapsePage: React.FC = () => {
                 <button onClick={() => fileInputRef.current?.click()}
                   style={{
                     flex: 1, padding: '6px 10px', borderRadius: '0 0 6px 0',
-                    border: '1px solid #1e293b', backgroundColor: 'transparent', color: '#64748b',
+                    border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#555555',
                     fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
                   }}>🎙️ Audio</button>
               </div>
@@ -717,17 +717,17 @@ const SynapsePage: React.FC = () => {
       ) : (
         /* Collapsed input bar */
         <div style={{
-          padding: '6px 24px', borderBottom: '1px solid #1e293b', flexShrink: 0,
-          display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0f172a',
+          padding: '6px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0a0a0a',
         }}>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>Analyzing:</span>
-          <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '11px', color: '#555555' }}>Analyzing:</span>
+          <span style={{ fontSize: '11px', color: '#999999', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {ingestedTitle || inputValue.slice(0, 80)}
           </span>
           <button onClick={() => { setInputCollapsed(false); setClaims([]); setSelectedClaimId(null); setTraceLines([]); }}
             style={{
-              padding: '3px 10px', borderRadius: '4px', border: '1px solid #1e293b',
-              backgroundColor: 'transparent', color: '#64748b', fontSize: '10px', fontWeight: 600,
+              padding: '3px 10px', borderRadius: '4px', border: '1px solid #1a1a1a',
+              backgroundColor: 'transparent', color: '#555555', fontSize: '10px', fontWeight: 600,
               cursor: 'pointer', transition: 'all 0.15s',
             }}>New Analysis</button>
         </div>
@@ -738,21 +738,21 @@ const SynapsePage: React.FC = () => {
 
         {/* ─── Left: Claims List ──────────────────────────────────────── */}
         <div style={{
-          width: '320px', flexShrink: 0, borderRight: '1px solid #1e293b',
+          width: '320px', flexShrink: 0, borderRight: '1px solid #1a1a1a',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
           <div style={{
-            padding: '10px 12px', borderBottom: '1px solid #1e293b',
+            padding: '10px 12px', borderBottom: '1px solid #1a1a1a',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#888888', textTransform: 'uppercase', letterSpacing: '1px' }}>
               Claims {claims.length > 0 && `(${claims.length})`}
             </div>
             {claims.length > 0 && claims.some(c => c.status === 'pending') && (
               <button onClick={verifyAll}
                 style={{
-                  padding: '3px 10px', borderRadius: '5px', border: '1px solid #fbbf24',
-                  backgroundColor: 'rgba(251,191,36,0.1)', color: '#fbbf24',
+                  padding: '3px 10px', borderRadius: '5px', border: '1px solid #ffffff',
+                  backgroundColor: 'rgba(255,255,255,0.05)', color: '#ffffff',
                   fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
                 }}>
                 Verify All
@@ -763,8 +763,8 @@ const SynapsePage: React.FC = () => {
           <div style={{ flex: 1, overflow: 'auto', padding: '6px' }}>
             {isExtracting && (
               <div style={{ padding: '32px', textAlign: 'center', animation: 'fadeIn 0.3s ease' }}>
-                <div style={{ width: '20px', height: '20px', border: '2px solid #1e293b', borderTopColor: '#fbbf24', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 10px' }} />
-                <div style={{ fontSize: '11px', color: '#64748b' }}>Extracting claims...</div>
+                <div style={{ width: '20px', height: '20px', border: '2px solid #1a1a1a', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 10px' }} />
+                <div style={{ fontSize: '11px', color: '#555555' }}>Extracting claims...</div>
               </div>
             )}
 
@@ -782,24 +782,24 @@ const SynapsePage: React.FC = () => {
                   }}
                   style={{
                     padding: '10px 12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer',
-                    borderLeft: `3px solid ${vc?.text || (claim.status === 'verifying' ? '#fbbf24' : '#1e293b')}`,
+                    borderLeft: `3px solid ${vc?.text || (claim.status === 'verifying' ? '#ffffff' : '#1a1a1a')}`,
                     borderTop: '1px solid', borderRight: '1px solid', borderBottom: '1px solid',
-                    borderTopColor: isSelected ? (vc?.border || '#334155') : '#1e293b',
-                    borderRightColor: isSelected ? (vc?.border || '#334155') : '#1e293b',
-                    borderBottomColor: isSelected ? (vc?.border || '#334155') : '#1e293b',
-                    backgroundColor: isSelected ? (vc?.bg || '#0f172a') : vc ? `${vc.bg}` : '#0c1220',
+                    borderTopColor: isSelected ? (vc?.border || '#333333') : '#1a1a1a',
+                    borderRightColor: isSelected ? (vc?.border || '#333333') : '#1a1a1a',
+                    borderBottomColor: isSelected ? (vc?.border || '#333333') : '#1a1a1a',
+                    backgroundColor: isSelected ? (vc?.bg || '#111111') : vc ? `${vc.bg}` : '#0a0a0a',
                     boxShadow: isSelected ? `0 0 16px ${vc?.glow || 'rgba(0,0,0,0.3)'}` : 'none',
                     transition: 'all 0.2s',
                     animation: `slideIn 0.3s ease ${i * 0.05}s both`,
                   }}
-                  onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderTopColor = '#334155'; e.currentTarget.style.borderRightColor = '#334155'; e.currentTarget.style.borderBottomColor = '#334155'; }}}
-                  onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderTopColor = '#1e293b'; e.currentTarget.style.borderRightColor = '#1e293b'; e.currentTarget.style.borderBottomColor = '#1e293b'; }}}
+                  onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderTopColor = '#2a2a2a'; e.currentTarget.style.borderRightColor = '#2a2a2a'; e.currentTarget.style.borderBottomColor = '#2a2a2a'; }}}
+                  onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderTopColor = '#1a1a1a'; e.currentTarget.style.borderRightColor = '#1a1a1a'; e.currentTarget.style.borderBottomColor = '#1a1a1a'; }}}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                     {claim.status === 'verifying' && (
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#fbbf24', animation: 'pulse 1.2s ease-in-out infinite', flexShrink: 0 }} />
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ffffff', animation: 'pulse 1.2s ease-in-out infinite', flexShrink: 0 }} />
                     )}
-                    <span style={{ fontSize: '9px', fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 600, color: '#555555', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       {claim.type}
                     </span>
                     {claim.verification?.overallVerdict && (
@@ -812,11 +812,11 @@ const SynapsePage: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45 }}>
+                  <div style={{ fontSize: '12px', color: '#cccccc', lineHeight: 1.45 }}>
                     {claim.original.length > 120 ? claim.original.slice(0, 120) + '...' : claim.original}
                   </div>
                   {claim.status === 'pending' && (
-                    <div style={{ fontSize: '9px', color: '#475569', marginTop: '4px' }}>Click to verify</div>
+                    <div style={{ fontSize: '9px', color: '#555555', marginTop: '4px' }}>Click to verify</div>
                   )}
                 </div>
               );
@@ -825,7 +825,7 @@ const SynapsePage: React.FC = () => {
             {!claims.length && !isExtracting && !isIngesting && (
               <div style={{ padding: '40px 20px', textAlign: 'center' }}>
                 <div style={{ fontSize: '28px', marginBottom: '10px', opacity: 0.2 }}>🔍</div>
-                <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '12px', color: '#555555', lineHeight: 1.5 }}>
                   Paste a URL or text above to extract claims
                 </div>
               </div>
@@ -840,11 +840,11 @@ const SynapsePage: React.FC = () => {
             <>
               {/* Sticky claim header + verdict */}
               <div style={{
-                flexShrink: 0, padding: '16px 20px', borderBottom: '1px solid #1e293b',
-                backgroundColor: '#0a0f1a',
+                flexShrink: 0, padding: '16px 20px', borderBottom: '1px solid #1a1a1a',
+                backgroundColor: '#000000',
               }}>
                 {/* Claim text */}
-                <div style={{ fontSize: '14px', color: '#f8fafc', lineHeight: 1.5, fontWeight: 500, marginBottom: '10px' }}>
+                <div style={{ fontSize: '14px', color: '#ffffff', lineHeight: 1.5, fontWeight: 500, marginBottom: '10px' }}>
                   "{selectedClaim.original}"
                 </div>
 
@@ -864,12 +864,12 @@ const SynapsePage: React.FC = () => {
                         {v.overallVerdict!.verdict.replace('_', ' ')}
                       </span>
                       <span style={{
-                        fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase',
-                        padding: '2px 8px', borderRadius: '4px', border: '1px solid #334155',
+                        fontSize: '10px', fontWeight: 700, color: '#888888', textTransform: 'uppercase',
+                        padding: '2px 8px', borderRadius: '4px', border: '1px solid #333333',
                       }}>
                         {v.overallVerdict!.confidence}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#cbd5e1', flex: 1 }}>
+                      <span style={{ fontSize: '12px', color: '#cccccc', flex: 1 }}>
                         {v.overallVerdict!.summary.length > 120 ? v.overallVerdict!.summary.slice(0, 120) + '...' : v.overallVerdict!.summary}
                       </span>
                     </div>
@@ -884,12 +884,12 @@ const SynapsePage: React.FC = () => {
                         <div key={step} style={{
                           padding: '3px 8px', borderRadius: '5px', fontSize: '9px', fontWeight: 600,
                           border: '1px solid',
-                          borderColor: isDone ? '#166534' : isCurrent ? '#854d0e' : '#1e293b',
-                          backgroundColor: isDone ? '#052e16' : isCurrent ? '#1c1917' : 'transparent',
-                          color: isDone ? '#4ade80' : isCurrent ? '#fbbf24' : '#475569',
+                          borderColor: isDone ? '#1a3a1a' : isCurrent ? '#333333' : '#1a1a1a',
+                          backgroundColor: isDone ? '#0a1a0a' : isCurrent ? '#111111' : 'transparent',
+                          color: isDone ? '#4ade80' : isCurrent ? '#ffffff' : '#444444',
                           display: 'flex', alignItems: 'center', gap: '3px', transition: 'all 0.3s',
                         }}>
-                          {isCurrent && <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#fbbf24', animation: 'pulse 1s ease-in-out infinite' }} />}
+                          {isCurrent && <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#ffffff', animation: 'pulse 1s ease-in-out infinite' }} />}
                           {isDone && <span>✓</span>}
                           {STEP_ICONS[step]} {step.replace('_', ' ')}
                         </div>
@@ -914,9 +914,9 @@ const SynapsePage: React.FC = () => {
                             style={{
                               padding: '3px 8px', borderRadius: '5px', fontSize: '9px', fontWeight: 700,
                               display: 'flex', alignItems: 'center', gap: '4px',
-                              border: `1px solid ${isDone ? `${chip.color}50` : isActive ? chip.color : '#1e293b'}`,
+                              border: `1px solid ${isDone ? `${chip.color}50` : isActive ? chip.color : '#1a1a1a'}`,
                               backgroundColor: isDone ? `${chip.color}15` : isActive ? `${chip.color}20` : 'transparent',
-                              color: isDone ? `${chip.color}` : isActive ? chip.color : '#475569',
+                              color: isDone ? `${chip.color}` : isActive ? chip.color : '#444444',
                               opacity: isPending ? 0.35 : isDone ? 0.75 : 1,
                               transition: 'all 0.3s ease',
                               animation: isActive ? 'agentPulse 1.5s ease-in-out infinite' : 'none',
@@ -934,7 +934,7 @@ const SynapsePage: React.FC = () => {
                             {chip.label}
                           </div>
                           {i < agentChips.length - 1 && (
-                            <span style={{ fontSize: '8px', color: '#334155' }}>→</span>
+                            <span style={{ fontSize: '8px', color: '#333333' }}>→</span>
                           )}
                         </React.Fragment>
                       );
@@ -945,21 +945,21 @@ const SynapsePage: React.FC = () => {
                 {/* Pipeline Stats */}
                 {(pipelineStats.steps > 0 || pipelineStats.durationMs > 0) && (
                   <div style={{
-                    marginTop: '8px', fontSize: '9px', color: '#475569', fontWeight: 600,
+                    marginTop: '8px', fontSize: '9px', color: '#555555', fontWeight: 600,
                     fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                     display: 'flex', gap: '10px', flexWrap: 'wrap',
                     animation: 'fadeIn 0.3s ease',
                   }}>
                     <span>{pipelineStats.steps} agent steps</span>
-                    <span style={{ color: '#334155' }}>·</span>
+                    <span style={{ color: '#333333' }}>·</span>
                     <span>{pipelineStats.apiCalls} API calls</span>
-                    <span style={{ color: '#334155' }}>·</span>
+                    <span style={{ color: '#333333' }}>·</span>
                     <span>{pipelineStats.services.size} services</span>
-                    <span style={{ color: '#334155' }}>·</span>
+                    <span style={{ color: '#333333' }}>·</span>
                     <span>{pipelineStats.sources} sources evaluated</span>
                     {pipelineStats.durationMs > 0 && (
                       <>
-                        <span style={{ color: '#334155' }}>·</span>
+                        <span style={{ color: '#333333' }}>·</span>
                         <span>{(pipelineStats.durationMs / 1000).toFixed(1)}s</span>
                       </>
                     )}
@@ -969,8 +969,8 @@ const SynapsePage: React.FC = () => {
 
               {/* Tabs */}
               <div style={{
-                flexShrink: 0, display: 'flex', borderBottom: '1px solid #1e293b',
-                backgroundColor: '#0c1220',
+                flexShrink: 0, display: 'flex', borderBottom: '1px solid #1a1a1a',
+                backgroundColor: '#0a0a0a',
               }}>
                 {([
                   { key: 'subclaims' as const, label: 'Sub-Claims', icon: '🔬', count: v.subclaims.length },
@@ -982,8 +982,8 @@ const SynapsePage: React.FC = () => {
                   return (
                     <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                       style={{
-                        flex: 1, padding: '10px 8px', border: 'none', borderBottom: `2px solid ${isActive ? '#fbbf24' : 'transparent'}`,
-                        backgroundColor: 'transparent', color: isActive ? '#fbbf24' : '#64748b',
+                        flex: 1, padding: '10px 8px', border: 'none', borderBottom: `2px solid ${isActive ? '#ffffff' : 'transparent'}`,
+                        backgroundColor: 'transparent', color: isActive ? '#ffffff' : '#555555',
                         fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                       }}>
@@ -992,8 +992,8 @@ const SynapsePage: React.FC = () => {
                       {tab.count > 0 && (
                         <span style={{
                           fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '3px',
-                          backgroundColor: isActive ? 'rgba(251,191,36,0.15)' : '#1e293b',
-                          color: isActive ? '#fbbf24' : '#475569',
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.1)' : '#1a1a1a',
+                          color: isActive ? '#ffffff' : '#444444',
                         }}>{tab.count}</span>
                       )}
                     </button>
@@ -1012,19 +1012,19 @@ const SynapsePage: React.FC = () => {
                       return (
                         <div key={sc.id} style={{
                           padding: '14px 16px', borderRadius: '10px',
-                          borderLeft: `3px solid ${scColor?.text || '#475569'}`,
-                          border: `1px solid ${scColor?.border || '#1e293b'}`,
-                          borderLeftWidth: '3px', borderLeftColor: scColor?.text || '#475569',
-                          backgroundColor: scColor?.bg || '#0f172a',
+                          borderLeft: `3px solid ${scColor?.text || '#444444'}`,
+                          border: `1px solid ${scColor?.border || '#1a1a1a'}`,
+                          borderLeftWidth: '3px', borderLeftColor: scColor?.text || '#444444',
+                          backgroundColor: scColor?.bg || '#0a0a0a',
                           animation: `slideIn 0.3s ease ${i * 0.08}s both`,
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                             <span style={{
                               width: '8px', height: '8px', borderRadius: '50%',
-                              backgroundColor: scColor?.text || '#475569',
+                              backgroundColor: scColor?.text || '#444444',
                               animation: !sc.verdict ? 'pulse 1.2s ease-in-out infinite' : 'none',
                             }} />
-                            <span style={{ fontSize: '10px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 600, color: '#555555', textTransform: 'uppercase' }}>
                               {sc.type}
                             </span>
                             {sc.verdict && (
@@ -1036,16 +1036,16 @@ const SynapsePage: React.FC = () => {
                               </span>
                             )}
                             {sc.confidence && (
-                              <span style={{ fontSize: '9px', color: '#475569', fontWeight: 600 }}>
+                              <span style={{ fontSize: '9px', color: '#555555', fontWeight: 600 }}>
                                 {sc.confidence}
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.55 }}>
+                          <div style={{ fontSize: '13px', color: '#dddddd', lineHeight: 1.55 }}>
                             {sc.text}
                           </div>
                           {sc.summary && (
-                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.5, paddingTop: '6px', borderTop: '1px solid #1e293b' }}>
+                            <div style={{ fontSize: '11px', color: '#888888', marginTop: '6px', lineHeight: 1.5, paddingTop: '6px', borderTop: '1px solid #1a1a1a' }}>
                               {sc.summary}
                             </div>
                           )}
@@ -1054,8 +1054,8 @@ const SynapsePage: React.FC = () => {
                     })}
                     {v.subclaims.length === 0 && selectedClaim.status === 'verifying' && (
                       <div style={{ textAlign: 'center', padding: '40px' }}>
-                        <div style={{ width: '24px', height: '24px', border: '2px solid #1e293b', borderTopColor: '#fbbf24', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 10px' }} />
-                        <div style={{ fontSize: '12px', color: '#fbbf24' }}>Decomposing claim...</div>
+                        <div style={{ width: '24px', height: '24px', border: '2px solid #1a1a1a', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 10px' }} />
+                        <div style={{ fontSize: '12px', color: '#ffffff' }}>Decomposing claim...</div>
                       </div>
                     )}
                   </div>
@@ -1072,10 +1072,10 @@ const SynapsePage: React.FC = () => {
                       return (
                         <div key={sc.id} style={{ marginBottom: '20px' }}>
                           <div style={{
-                            fontSize: '11px', fontWeight: 700, color: scColor?.text || '#94a3b8', marginBottom: '8px',
+                            fontSize: '11px', fontWeight: 700, color: scColor?.text || '#888888', marginBottom: '8px',
                             display: 'flex', alignItems: 'center', gap: '6px',
                           }}>
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: scColor?.text || '#475569' }} />
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: scColor?.text || '#444444' }} />
                             {sc.text.slice(0, 80)}{sc.text.length > 80 ? '...' : ''}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1086,8 +1086,8 @@ const SynapsePage: React.FC = () => {
                               return (
                                 <div key={ev.id} style={{
                                   padding: '10px 12px', borderRadius: '8px',
-                                  border: `1px solid ${ev.tier === 'counter' ? '#991b1b30' : '#1e293b'}`,
-                                  backgroundColor: ev.tier === 'counter' ? '#1c0a0a' : '#0f172a',
+                                  border: `1px solid ${ev.tier === 'counter' ? '#3a1a1a' : '#1a1a1a'}`,
+                                  backgroundColor: ev.tier === 'counter' ? '#1a0a0a' : '#0a0a0a',
                                   animation: `slideIn 0.2s ease ${i * 0.04}s both`,
                                 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
@@ -1096,14 +1096,14 @@ const SynapsePage: React.FC = () => {
                                       {tierInfo.label}
                                     </span>
                                     {ev.study_type && (
-                                      <span style={{ fontSize: '9px', color: '#475569', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', backgroundColor: '#1e293b' }}>
+                                      <span style={{ fontSize: '9px', color: '#555555', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', backgroundColor: '#1a1a1a' }}>
                                         {ev.study_type}
                                       </span>
                                     )}
                                     {/* Quality gauge */}
                                     {ev.quality_score != null && (
                                       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                        <div style={{ width: '40px', height: '4px', borderRadius: '2px', backgroundColor: '#1e293b', overflow: 'hidden' }}>
+                                        <div style={{ width: '40px', height: '4px', borderRadius: '2px', backgroundColor: '#1a1a1a', overflow: 'hidden' }}>
                                           <div style={{ width: `${qScore}%`, height: '100%', borderRadius: '2px', backgroundColor: qColor, transition: 'width 0.5s ease' }} />
                                         </div>
                                         <span style={{ fontSize: '9px', fontWeight: 700, color: qColor }}>{qScore}</span>
@@ -1112,21 +1112,21 @@ const SynapsePage: React.FC = () => {
                                     {ev.supports_claim != null && (
                                       <span style={{
                                         fontSize: '8px', fontWeight: 700, padding: '1px 5px', borderRadius: '3px',
-                                        backgroundColor: ev.supports_claim === true ? '#052e16' : ev.supports_claim === false ? '#1c0a0a' : '#1c1917',
+                                        backgroundColor: ev.supports_claim === true ? '#0a1a0a' : ev.supports_claim === false ? '#1a0a0a' : '#1a1500',
                                         color: ev.supports_claim === true ? '#4ade80' : ev.supports_claim === false ? '#f87171' : '#fbbf24',
-                                        border: `1px solid ${ev.supports_claim === true ? '#166534' : ev.supports_claim === false ? '#991b1b' : '#854d0e'}`,
+                                        border: `1px solid ${ev.supports_claim === true ? '#1a3a1a' : ev.supports_claim === false ? '#3a1a1a' : '#3a3000'}`,
                                       }}>
                                         {ev.supports_claim === true ? 'SUPPORTS' : ev.supports_claim === false ? 'OPPOSES' : 'PARTIAL'}
                                       </span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0', marginBottom: '3px' }}>
+                                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#dddddd', marginBottom: '3px' }}>
                                     {ev.title}
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
+                                  <div style={{ fontSize: '11px', color: '#888888', lineHeight: 1.5 }}>
                                     {ev.snippet?.slice(0, 180)}{(ev.snippet?.length || 0) > 180 ? '...' : ''}
                                   </div>
-                                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: '#475569' }}>
+                                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: '#555555' }}>
                                     {ev.year && <span>{ev.year}</span>}
                                     {ev.citations != null && <span>{ev.citations} cit.</span>}
                                   </div>
@@ -1140,14 +1140,14 @@ const SynapsePage: React.FC = () => {
                     {/* Ungrouped evidence */}
                     {v.evidence.filter(e => !e.subclaim_id || !v.subclaims.find(sc => sc.id === e.subclaim_id)).length > 0 && (
                       <div style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '8px' }}>Other Sources</div>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#555555', marginBottom: '8px' }}>Other Sources</div>
                         {v.evidence.filter(e => !e.subclaim_id || !v.subclaims.find(sc => sc.id === e.subclaim_id)).map((ev, i) => {
                           const tierInfo = TIER_LABELS[ev.tier] || { label: ev.tier, icon: '📋', color: '#94a3b8' };
                           return (
-                            <div key={ev.id} style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #1e293b', backgroundColor: '#0f172a', marginBottom: '4px' }}>
+                            <div key={ev.id} style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a', marginBottom: '4px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ fontSize: '10px' }}>{tierInfo.icon}</span>
-                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#e2e8f0' }}>{ev.title}</span>
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#dddddd' }}>{ev.title}</span>
                               </div>
                             </div>
                           );
@@ -1155,7 +1155,7 @@ const SynapsePage: React.FC = () => {
                       </div>
                     )}
                     {v.evidence.length === 0 && (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#475569', fontSize: '12px' }}>
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#555555', fontSize: '12px' }}>
                         {selectedClaim.status === 'verifying' ? 'Searching for evidence...' : 'No evidence collected yet'}
                       </div>
                     )}
@@ -1185,7 +1185,7 @@ const SynapsePage: React.FC = () => {
                                 <div style={{
                                   flexShrink: 0, width: '200px', padding: '14px',
                                   borderRadius: '10px', border: `1px solid ${mutColor}40`,
-                                  backgroundColor: '#0f172a',
+                                  backgroundColor: '#0a0a0a',
                                   boxShadow: `0 0 12px ${mutColor}15`,
                                   animation: `slideInH 0.4s ease ${i * 0.15}s both`,
                                   position: 'relative',
@@ -1194,7 +1194,7 @@ const SynapsePage: React.FC = () => {
                                   <div style={{
                                     position: 'absolute', top: '-5px', left: '50%', transform: 'translateX(-50%)',
                                     width: '10px', height: '10px', borderRadius: '50%',
-                                    backgroundColor: mutColor, border: '2px solid #0a0f1a',
+                                    backgroundColor: mutColor, border: '2px solid #000000',
                                     boxShadow: `0 0 8px ${mutColor}60`,
                                   }} />
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
@@ -1202,12 +1202,12 @@ const SynapsePage: React.FC = () => {
                                     <span style={{ fontSize: '9px', fontWeight: 700, color: mutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                       {node.source_type}
                                     </span>
-                                    {node.date && <span style={{ fontSize: '9px', color: '#475569', marginLeft: 'auto' }}>{node.date}</span>}
+                                    {node.date && <span style={{ fontSize: '9px', color: '#555555', marginLeft: 'auto' }}>{node.date}</span>}
                                   </div>
-                                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>
+                                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#888888', marginBottom: '4px' }}>
                                     {node.source_name}
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45, fontStyle: 'italic' }}>
+                                  <div style={{ fontSize: '11px', color: '#cccccc', lineHeight: 1.45, fontStyle: 'italic' }}>
                                     "{node.text.length > 100 ? node.text.slice(0, 100) + '...' : node.text}"
                                   </div>
                                   {node.mutation_severity !== 'none' && (
@@ -1246,16 +1246,16 @@ const SynapsePage: React.FC = () => {
                         {v.provenanceAnalysis && (
                           <div style={{
                             marginTop: '12px', padding: '12px 14px', borderRadius: '8px',
-                            backgroundColor: '#0f172a', border: '1px solid #1e293b',
-                            fontSize: '12px', color: '#94a3b8', lineHeight: 1.6,
+                            backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
+                            fontSize: '12px', color: '#888888', lineHeight: 1.6,
                           }}>
-                            <span style={{ fontWeight: 700, color: '#fbbf24', marginRight: '6px' }}>Analysis:</span>
+                            <span style={{ fontWeight: 700, color: '#ffffff', marginRight: '6px' }}>Analysis:</span>
                             {v.provenanceAnalysis}
                           </div>
                         )}
                       </>
                     ) : (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#475569', fontSize: '12px' }}>
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#555555', fontSize: '12px' }}>
                         {selectedClaim.status === 'verifying' ? 'Tracing claim origins...' : 'No provenance data yet'}
                       </div>
                     )}
@@ -1267,43 +1267,43 @@ const SynapsePage: React.FC = () => {
                   <div style={{ animation: 'fadeIn 0.2s ease' }}>
                     {v.correctedClaim ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #991b1b30', backgroundColor: '#1c0a0a' }}>
+                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #3a1a1a', backgroundColor: '#1a0a0a' }}>
                           <div style={{ fontSize: '10px', fontWeight: 700, color: '#f87171', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Original</div>
                           <div style={{ fontSize: '14px', color: '#fca5a5', lineHeight: 1.6, textDecoration: 'line-through', textDecorationColor: '#f8717140' }}>
                             {v.correctedClaim.original}
                           </div>
                         </div>
-                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #16653430', backgroundColor: '#052e16' }}>
+                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a3a1a', backgroundColor: '#0a1a0a' }}>
                           <div style={{ fontSize: '10px', fontWeight: 700, color: '#4ade80', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Corrected</div>
                           <div style={{ fontSize: '14px', color: '#bbf7d0', lineHeight: 1.6 }}>
                             {v.correctedClaim.corrected}
                           </div>
                         </div>
-                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #312e8130', backgroundColor: '#0f0f2e' }}>
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#818cf8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Steel-manned</div>
+                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #222233', backgroundColor: '#0a0a15' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#a0a0cc', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Steel-manned</div>
                           <div style={{ fontSize: '14px', color: '#c7d2fe', lineHeight: 1.6 }}>
                             {v.correctedClaim.steelmanned}
                           </div>
                         </div>
-                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #854d0e30', backgroundColor: '#1c1917' }}>
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>One-sentence summary</div>
-                          <div style={{ fontSize: '13px', color: '#fde68a', lineHeight: 1.6 }}>
+                        <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #2a2a1a', backgroundColor: '#111108' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#cccc88', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>One-sentence summary</div>
+                          <div style={{ fontSize: '13px', color: '#eeeebb', lineHeight: 1.6 }}>
                             {v.correctedClaim.one_sentence}
                           </div>
                         </div>
                         {v.correctedClaim.caveats.length > 0 && (
-                          <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1e293b', backgroundColor: '#0f172a' }}>
-                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Key Caveats</div>
+                          <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#ffffff', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Key Caveats</div>
                             {v.correctedClaim.caveats.map((c, i) => (
-                              <div key={i} style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
-                                <span style={{ color: '#fbbf24', flexShrink: 0 }}>⚠</span> {c}
+                              <div key={i} style={{ fontSize: '12px', color: '#888888', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#ffffff', flexShrink: 0 }}>⚠</span> {c}
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#475569', fontSize: '12px' }}>
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#555555', fontSize: '12px' }}>
                         {selectedClaim.status === 'verifying' ? 'Generating corrected claim...' : 'No correction generated yet'}
                       </div>
                     )}
@@ -1314,8 +1314,8 @@ const SynapsePage: React.FC = () => {
           ) : (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ textAlign: 'center', maxWidth: '360px', padding: '48px' }}>
-                <div style={{ fontSize: '48px', marginBottom: '14px', opacity: 0.15 }}>🧠</div>
-                <div style={{ fontSize: '14px', color: '#475569', lineHeight: 1.6 }}>
+                <img src="/synapse-logo.svg" alt="" style={{ width: '48px', height: '48px', opacity: 0.15, margin: '0 auto 14px' }} />
+                <div style={{ fontSize: '14px', color: '#555555', lineHeight: 1.6 }}>
                   Select a claim to see the full verification breakdown
                 </div>
               </div>
@@ -1326,21 +1326,21 @@ const SynapsePage: React.FC = () => {
         {/* ─── Right: Agent Trace (collapsible) ──────────────────────── */}
         {showTrace && traceLines.length > 0 && (
           <div style={{
-            width: '300px', flexShrink: 0, borderLeft: '1px solid #1e293b',
+            width: '300px', flexShrink: 0, borderLeft: '1px solid #1a1a1a',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            backgroundColor: '#080c14',
+            backgroundColor: '#050505',
           }}>
             <div style={{
-              padding: '8px 12px', borderBottom: '1px solid #1e293b',
+              padding: '8px 12px', borderBottom: '1px solid #1a1a1a',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#fbbf24', animation: selectedClaim?.status === 'verifying' ? 'pulse 1s ease-in-out infinite' : 'none' }} />
-                <span style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ffffff', animation: selectedClaim?.status === 'verifying' ? 'pulse 1s ease-in-out infinite' : 'none' }} />
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '1px' }}>
                   Mission Control
                 </span>
               </div>
-              <span style={{ fontSize: '9px', color: '#475569' }}>{traceLines.length} events</span>
+              <span style={{ fontSize: '9px', color: '#555555' }}>{traceLines.length} events</span>
             </div>
             <div ref={traceRef} style={{
               flex: 1, overflow: 'auto', padding: '8px 10px',
@@ -1349,14 +1349,14 @@ const SynapsePage: React.FC = () => {
             }}>
               {traceLines.map((line, i) => {
                 if (line.type === 'divider') {
-                  return <div key={i} style={{ borderTop: '1px solid #1e293b', margin: '6px 0' }} />;
+                  return <div key={i} style={{ borderTop: '1px solid #1a1a1a', margin: '6px 0' }} />;
                 }
                 const typeConfig: Record<string, { color: string; icon: string }> = {
-                  step: { color: '#fbbf24', icon: '▸' },
+                  step: { color: '#ffffff', icon: '▸' },
                   success: { color: '#4ade80', icon: '✓' },
                   error: { color: '#f87171', icon: '✗' },
-                  verdict: { color: '#818cf8', icon: '◆' },
-                  info: { color: '#64748b', icon: '·' },
+                  verdict: { color: '#cccccc', icon: '◆' },
+                  info: { color: '#666666', icon: '·' },
                 };
                 const cfg = typeConfig[line.type] || typeConfig.info;
                 const badgeInfo = line.badge ? AGENT_BRAND_COLORS[line.badge] : null;
