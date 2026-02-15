@@ -289,7 +289,7 @@ class AISuggestionsService {
 
     try {
       // Call the backend Gemini-powered design doc analysis endpoint
-      const response = await fetch('http://localhost:8000/analyze-design-doc', {
+      const response = await fetch('/analyze-design-doc', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -59,7 +59,7 @@ export interface CreatePRResponse {
 }
 
 class AgentService {
-  private baseUrl = 'http://localhost:8000';
+  private baseUrl = '';
 
   async delegateToAgent(request: AgentDelegationRequest): Promise<AgentDelegationResponse> {
     try {

@@ -320,6 +320,469 @@
       },
       "created_at": 1754934070.347701,
       "updated_at": 1754934070.347701
+    },
+    "FOUNDATION-1": {
+      "id": "FOUNDATION-1",
+      "type": "task",
+      "name": "Introduction to Machine Learning: History, Types, and Applications",
+      "properties": {
+        "description": "Learn what machine learning is, its historical development, the three main types (supervised, unsupervised, reinforcement), and real-world applications across industries.",
+        "estimate": "2h",
+        "priority": "P0",
+        "status": "todo",
+        "keywords": [
+          "industries.",
+          "machine",
+          "applications",
+          "reinforcement),",
+          "types,",
+          "development,",
+          "introduction",
+          "across",
+          "history,",
+          "real-world",
+          "learning",
+          "historical",
+          "learning:",
+          "(supervised,",
+          "unsupervised,"
+        ],
+        "tech_category": "FOUNDATION",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "FOUNDATION-2": {
+      "id": "FOUNDATION-2",
+      "type": "task",
+      "name": "Mathematical Prerequisites: Statistics, Linear Algebra, and Calculus Basics",
+      "properties": {
+        "description": "Review essential mathematical concepts including probability, descriptive statistics, vectors, matrices, and basic derivatives needed for machine learning.",
+        "estimate": "3h",
+        "priority": "P0",
+        "status": "todo",
+        "keywords": [
+          "machine",
+          "essential",
+          "probability,",
+          "basics",
+          "derivatives",
+          "descriptive",
+          "matrices,",
+          "learning.",
+          "prerequisites:",
+          "including",
+          "mathematical",
+          "concepts",
+          "statistics,",
+          "calculus",
+          "algebra,",
+          "vectors,",
+          "linear",
+          "needed",
+          "review"
+        ],
+        "tech_category": "FOUNDATION",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "CORE-1": {
+      "id": "CORE-1",
+      "type": "task",
+      "name": "Supervised Learning: Linear and Logistic Regression",
+      "properties": {
+        "description": "Master the fundamentals of supervised learning through linear regression for continuous outcomes and logistic regression for classification problems.",
+        "estimate": "4h",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "outcomes",
+          "problems.",
+          "fundamentals",
+          "linear",
+          "continuous",
+          "logistic",
+          "through",
+          "learning",
+          "classification",
+          "learning:",
+          "supervised",
+          "regression",
+          "master"
+        ],
+        "tech_category": "CORE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "PRACTICE-1": {
+      "id": "PRACTICE-1",
+      "type": "task",
+      "name": "Hands-on: Build Your First Regression Models",
+      "properties": {
+        "description": "Implement linear and logistic regression from scratch using Python. Work with real datasets to predict house prices and classify email spam.",
+        "estimate": "3h",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "hands-on:",
+          "predict",
+          "python.",
+          "classify",
+          "linear",
+          "datasets",
+          "logistic",
+          "prices",
+          "models",
+          "scratch",
+          "implement",
+          "regression"
+        ],
+        "tech_category": "PRACTICE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "CORE-2": {
+      "id": "CORE-2",
+      "type": "task",
+      "name": "Model Evaluation and Validation Techniques",
+      "properties": {
+        "description": "Learn how to properly evaluate machine learning models using cross-validation, confusion matrices, ROC curves, and metrics like precision, recall, and F1-score.",
+        "estimate": "3h",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "metrics",
+          "validation",
+          "machine",
+          "properly",
+          "recall,",
+          "f1-score.",
+          "curves,",
+          "techniques",
+          "cross-validation,",
+          "evaluate",
+          "precision,",
+          "evaluation",
+          "confusion",
+          "matrices,",
+          "learning",
+          "models"
+        ],
+        "tech_category": "CORE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "CORE-3": {
+      "id": "CORE-3",
+      "type": "task",
+      "name": "Tree-Based Methods: Decision Trees and Random Forests",
+      "properties": {
+        "description": "Understand decision tree algorithms, their advantages and limitations, and how ensemble methods like Random Forest improve performance.",
+        "estimate": "3h",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "performance.",
+          "forest",
+          "limitations,",
+          "ensemble",
+          "decision",
+          "methods:",
+          "advantages",
+          "methods",
+          "forests",
+          "understand",
+          "tree-based",
+          "improve",
+          "random",
+          "algorithms,"
+        ],
+        "tech_category": "CORE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "PRACTICE-2": {
+      "id": "PRACTICE-2",
+      "type": "task",
+      "name": "Classification Challenge: Build and Compare Multiple Models",
+      "properties": {
+        "description": "Apply decision trees, random forests, and logistic regression to a classification problem. Compare performance and interpret results.",
+        "estimate": "4h",
+        "priority": "P1",
+        "status": "todo",
+        "keywords": [
+          "results.",
+          "compare",
+          "multiple",
+          "interpret",
+          "trees,",
+          "regression",
+          "problem.",
+          "forests,",
+          "decision",
+          "logistic",
+          "models",
+          "classification",
+          "performance",
+          "random",
+          "challenge:"
+        ],
+        "tech_category": "PRACTICE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "CORE-4": {
+      "id": "CORE-4",
+      "type": "task",
+      "name": "Unsupervised Learning: Clustering and Dimensionality Reduction",
+      "properties": {
+        "description": "Explore unsupervised learning through K-means clustering and Principal Component Analysis (PCA) for finding patterns in unlabeled data.",
+        "estimate": "3h",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "k-means",
+          "unsupervised",
+          "reduction",
+          "component",
+          "analysis",
+          "finding",
+          "patterns",
+          "through",
+          "learning",
+          "unlabeled",
+          "learning:",
+          "principal",
+          "clustering",
+          "dimensionality",
+          "explore"
+        ],
+        "tech_category": "CORE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "PROJECT-1": {
+      "id": "PROJECT-1",
+      "type": "task",
+      "name": "Capstone Project: End-to-End Machine Learning Pipeline",
+      "properties": {
+        "description": "Build a complete machine learning solution from data collection and preprocessing through model training, evaluation, and deployment planning.",
+        "estimate": "6h",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "machine",
+          "solution",
+          "evaluation,",
+          "end-to-end",
+          "collection",
+          "training,",
+          "preprocessing",
+          "capstone",
+          "deployment",
+          "through",
+          "learning",
+          "complete",
+          "planning.",
+          "project:",
+          "pipeline"
+        ],
+        "tech_category": "PROJECT",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "PROJECT-2": {
+      "id": "PROJECT-2",
+      "type": "task",
+      "name": "Real-World Applications Case Study",
+      "properties": {
+        "description": "Explore how organic chemistry principles apply to pharmaceuticals, materials science, or biochemistry through detailed case studies and problem-solving.",
+        "estimate": "3h",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "organic",
+          "applications",
+          "biochemistry",
+          "problem-solving.",
+          "materials",
+          "detailed",
+          "real-world",
+          "science,",
+          "studies",
+          "through",
+          "principles",
+          "pharmaceuticals,",
+          "explore",
+          "chemistry"
+        ],
+        "tech_category": "PROJECT",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771124804.960053,
+      "updated_at": 1771124804.960053
+    },
+    "REVIEW-1": {
+      "id": "REVIEW-1",
+      "type": "task",
+      "name": "Knowledge Synthesis and Next Steps",
+      "properties": {
+        "description": "Review all concepts learned, take a comprehensive assessment, and create a personalized roadmap for advanced machine learning topics like deep learning or specialized domains.",
+        "estimate": "2h",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "machine",
+          "topics",
+          "synthesis",
+          "concepts",
+          "comprehensive",
+          "domains.",
+          "roadmap",
+          "specialized",
+          "advanced",
+          "learning",
+          "knowledge",
+          "personalized",
+          "review",
+          "assessment,",
+          "create",
+          "learned,"
+        ],
+        "tech_category": "REVIEW",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "component_review": {
+      "id": "component_review",
+      "type": "component",
+      "name": "REVIEW Component",
+      "properties": {
+        "category": "REVIEW",
+        "related_tasks": [
+          "REVIEW-1"
+        ]
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "component_foundation": {
+      "id": "component_foundation",
+      "type": "component",
+      "name": "FOUNDATION Component",
+      "properties": {
+        "category": "FOUNDATION",
+        "related_tasks": [
+          "FOUNDATION-1",
+          "FOUNDATION-2"
+        ]
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "component_core": {
+      "id": "component_core",
+      "type": "component",
+      "name": "CORE Component",
+      "properties": {
+        "category": "CORE",
+        "related_tasks": [
+          "CORE-1",
+          "CORE-2",
+          "CORE-3",
+          "CORE-4"
+        ]
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "component_practice": {
+      "id": "component_practice",
+      "type": "component",
+      "name": "PRACTICE Component",
+      "properties": {
+        "category": "PRACTICE",
+        "related_tasks": [
+          "PRACTICE-1",
+          "PRACTICE-2",
+          "PRACTICE-3"
+        ]
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "component_project": {
+      "id": "component_project",
+      "type": "component",
+      "name": "PROJECT Component",
+      "properties": {
+        "category": "PROJECT",
+        "related_tasks": [
+          "PROJECT-1"
+        ]
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
+    },
+    "PRACTICE-3": {
+      "id": "PRACTICE-3",
+      "type": "task",
+      "name": "Unsupervised Learning Lab: Customer Segmentation",
+      "properties": {
+        "description": "Use clustering algorithms to segment customers based on purchasing behavior. Apply PCA for data visualization and interpretation.",
+        "estimate": "3h",
+        "priority": "P2",
+        "status": "todo",
+        "keywords": [
+          "segmentation",
+          "unsupervised",
+          "interpretation.",
+          "customers",
+          "purchasing",
+          "customer",
+          "algorithms",
+          "learning",
+          "visualization",
+          "segment",
+          "behavior.",
+          "clustering"
+        ],
+        "tech_category": "PRACTICE",
+        "team": null,
+        "owner": null
+      },
+      "created_at": 1771126661.7630239,
+      "updated_at": 1771126661.7630239
     }
   },
   "edges": {
@@ -538,6 +1001,258 @@
       "properties": {},
       "strength": 1.0,
       "created_at": 1754934070.347701
+    },
+    "FOUNDATION-1_blocks_FOUNDATION-2": {
+      "id": "FOUNDATION-1_blocks_FOUNDATION-2",
+      "source_id": "FOUNDATION-1",
+      "target_id": "FOUNDATION-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771124804.960053
+    },
+    "FOUNDATION-2_blocks_CORE-1": {
+      "id": "FOUNDATION-2_blocks_CORE-1",
+      "source_id": "FOUNDATION-2",
+      "target_id": "CORE-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "CORE-1_blocks_PRACTICE-1": {
+      "id": "CORE-1_blocks_PRACTICE-1",
+      "source_id": "CORE-1",
+      "target_id": "PRACTICE-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "PRACTICE-1_blocks_CORE-2": {
+      "id": "PRACTICE-1_blocks_CORE-2",
+      "source_id": "PRACTICE-1",
+      "target_id": "CORE-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "CORE-2_blocks_CORE-3": {
+      "id": "CORE-2_blocks_CORE-3",
+      "source_id": "CORE-2",
+      "target_id": "CORE-3",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "CORE-3_blocks_PRACTICE-2": {
+      "id": "CORE-3_blocks_PRACTICE-2",
+      "source_id": "CORE-3",
+      "target_id": "PRACTICE-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "PRACTICE-2_blocks_CORE-4": {
+      "id": "PRACTICE-2_blocks_CORE-4",
+      "source_id": "PRACTICE-2",
+      "target_id": "CORE-4",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771124804.960053
+    },
+    "CORE-4_blocks_PROJECT-1": {
+      "id": "CORE-4_blocks_PROJECT-1",
+      "source_id": "CORE-4",
+      "target_id": "PROJECT-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771124804.960053
+    },
+    "PROJECT-1_blocks_PROJECT-2": {
+      "id": "PROJECT-1_blocks_PROJECT-2",
+      "source_id": "PROJECT-1",
+      "target_id": "PROJECT-2",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771124804.960053
+    },
+    "PROJECT-2_blocks_REVIEW-1": {
+      "id": "PROJECT-2_blocks_REVIEW-1",
+      "source_id": "PROJECT-2",
+      "target_id": "REVIEW-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771124804.960053
+    },
+    "component_review_encompasses_REVIEW-1": {
+      "id": "component_review_encompasses_REVIEW-1",
+      "source_id": "component_review",
+      "target_id": "REVIEW-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_foundation_encompasses_FOUNDATION-1": {
+      "id": "component_foundation_encompasses_FOUNDATION-1",
+      "source_id": "component_foundation",
+      "target_id": "FOUNDATION-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_foundation_encompasses_FOUNDATION-2": {
+      "id": "component_foundation_encompasses_FOUNDATION-2",
+      "source_id": "component_foundation",
+      "target_id": "FOUNDATION-2",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_core_encompasses_CORE-1": {
+      "id": "component_core_encompasses_CORE-1",
+      "source_id": "component_core",
+      "target_id": "CORE-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_core_encompasses_CORE-2": {
+      "id": "component_core_encompasses_CORE-2",
+      "source_id": "component_core",
+      "target_id": "CORE-2",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_core_encompasses_CORE-3": {
+      "id": "component_core_encompasses_CORE-3",
+      "source_id": "component_core",
+      "target_id": "CORE-3",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_core_encompasses_CORE-4": {
+      "id": "component_core_encompasses_CORE-4",
+      "source_id": "component_core",
+      "target_id": "CORE-4",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_practice_encompasses_PRACTICE-1": {
+      "id": "component_practice_encompasses_PRACTICE-1",
+      "source_id": "component_practice",
+      "target_id": "PRACTICE-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_practice_encompasses_PRACTICE-2": {
+      "id": "component_practice_encompasses_PRACTICE-2",
+      "source_id": "component_practice",
+      "target_id": "PRACTICE-2",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_project_encompasses_PROJECT-1": {
+      "id": "component_project_encompasses_PROJECT-1",
+      "source_id": "component_project",
+      "target_id": "PROJECT-1",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_project_encompasses_PROJECT-2": {
+      "id": "component_project_encompasses_PROJECT-2",
+      "source_id": "component_project",
+      "target_id": "PROJECT-2",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771124804.960053
+    },
+    "FOUNDATION-1_blocks_CORE-1": {
+      "id": "FOUNDATION-1_blocks_CORE-1",
+      "source_id": "FOUNDATION-1",
+      "target_id": "CORE-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "CORE-2_blocks_CORE-4": {
+      "id": "CORE-2_blocks_CORE-4",
+      "source_id": "CORE-2",
+      "target_id": "CORE-4",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "CORE-4_blocks_PRACTICE-3": {
+      "id": "CORE-4_blocks_PRACTICE-3",
+      "source_id": "CORE-4",
+      "target_id": "PRACTICE-3",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "PRACTICE-2_blocks_PROJECT-1": {
+      "id": "PRACTICE-2_blocks_PROJECT-1",
+      "source_id": "PRACTICE-2",
+      "target_id": "PROJECT-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "PRACTICE-3_blocks_PROJECT-1": {
+      "id": "PRACTICE-3_blocks_PROJECT-1",
+      "source_id": "PRACTICE-3",
+      "target_id": "PROJECT-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "PROJECT-1_blocks_REVIEW-1": {
+      "id": "PROJECT-1_blocks_REVIEW-1",
+      "source_id": "PROJECT-1",
+      "target_id": "REVIEW-1",
+      "relationship": "blocks",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
+    },
+    "component_practice_encompasses_PRACTICE-3": {
+      "id": "component_practice_encompasses_PRACTICE-3",
+      "source_id": "component_practice",
+      "target_id": "PRACTICE-3",
+      "relationship": "encompasses",
+      "properties": {},
+      "strength": 1.0,
+      "created_at": 1771126661.7630239
     }
   }
 }

@@ -56,10 +56,10 @@ const KnowledgeGraphModal: React.FC<KnowledgeGraphModalProps> = ({
     // Create container group for zoom
     const container = svg.append("g");
 
-    // Color scheme for different node types
+    // Color scheme for learning-focused node types
     const colorScale = d3.scaleOrdinal<string>()
       .domain(['task', 'file', 'person', 'concept', 'component'])
-      .range(['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444']);
+      .range(['#7c3aed', '#10b981', '#f59e0b', '#3b82f6', '#ec4899']);
 
     // Size scale based on node connections
     const sizeScale = d3.scaleLinear()
@@ -198,11 +198,11 @@ const KnowledgeGraphModal: React.FC<KnowledgeGraphModalProps> = ({
       .text((d: any) => {
         // Show shorter relationship names
         const relationMap: {[key: string]: string} = {
-          'responsible_for': 'owns',
-          'assigned_to': 'assigned',
-          'encompasses': 'contains',
-          'blocks': 'blocks',
-          'creates': 'creates'
+          'responsible_for': 'teaches',
+          'assigned_to': 'builds on',
+          'encompasses': 'includes',
+          'blocks': 'prerequisite',
+          'creates': 'produces'
         };
         return relationMap[d.relationship] || d.relationship;
       });
@@ -246,11 +246,11 @@ const KnowledgeGraphModal: React.FC<KnowledgeGraphModalProps> = ({
 
     // Add background for legend
     const legendData = [
-      { type: 'task', label: 'Tasks', color: colorScale('task') },
-      { type: 'file', label: 'Files', color: colorScale('file') },
-      { type: 'person', label: 'People', color: colorScale('person') },
-      { type: 'team', label: 'Teams', color: colorScale('team') },
-      { type: 'component', label: 'Components', color: colorScale('component') }
+      { type: 'task', label: 'Learning Modules', color: colorScale('task') },
+      { type: 'file', label: 'Resources', color: colorScale('file') },
+      { type: 'person', label: 'Contributors', color: colorScale('person') },
+      { type: 'concept', label: 'Concepts', color: colorScale('concept') },
+      { type: 'component', label: 'Topics', color: colorScale('component') }
     ].filter(item => nodes.some((n: any) => n.type === item.type)); // Only show types that exist
 
     legend.append("rect")
@@ -298,9 +298,9 @@ const KnowledgeGraphModal: React.FC<KnowledgeGraphModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Knowledge Graph</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Knowledge Map</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Visual representation of tasks, files, and relationships in your organization
+              Visualize how concepts connect across your learning journey
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -333,9 +333,9 @@ const KnowledgeGraphModal: React.FC<KnowledgeGraphModalProps> = ({
                 <svg ref={svgRef} className="w-full h-full"></svg>
               ) : (
                 <div className="text-center text-gray-500">
-                  <div className="text-4xl mb-4">🕸️</div>
-                  <p className="text-lg mb-2">No knowledge graph data</p>
-                  <p className="text-sm">Generate a plan or complete tasks to build the knowledge graph</p>
+                  <div className="text-4xl mb-4">🧠</div>
+                  <p className="text-lg mb-2">No learning data yet</p>
+                  <p className="text-sm">Generate a study plan to build your knowledge map</p>
                 </div>
               )}
             </div>
@@ -377,7 +377,7 @@ const KnowledgeGraphModal: React.FC<KnowledgeGraphModalProps> = ({
           {/* Node details panel */}
           {selectedNode && (
             <div className="w-80 border-l bg-gray-50 p-4 overflow-y-auto">
-              <h3 className="font-semibold text-gray-900 mb-3">Node Details</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Module Details</h3>
               
               <div className="space-y-3">
                 <div>
