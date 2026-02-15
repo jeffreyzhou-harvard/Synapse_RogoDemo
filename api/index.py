@@ -130,9 +130,13 @@ def api_extract_claims(req: ExtractClaimsRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text is empty")
     try:
+        print(f"[Vercel] extract_claims called with {len(req.text)} chars")
+        print(f"[Vercel] ANTHROPIC_API_KEY present: {bool(os.getenv('ANTHROPIC_API_KEY'))}")
         raw_claims = extract_claims(req.text)
+        print(f"[Vercel] extract_claims returned {len(raw_claims)} claims")
     except Exception as e:
-        print(f"[Vercel] extract_claims error: {e}")
+        import traceback
+        print(f"[Vercel] extract_claims error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Claim extraction failed: {str(e)}")
     claims = []
     for i, c in enumerate(raw_claims):
