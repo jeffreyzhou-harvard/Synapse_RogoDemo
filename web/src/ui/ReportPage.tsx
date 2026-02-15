@@ -72,6 +72,16 @@ const ReportPage: React.FC = () => {
 
   useEffect(() => {
     if (!reportId) return;
+    // Try localStorage first (works on Vercel where backend is stateless)
+    const stored = localStorage.getItem(`synapse-report-${reportId}`);
+    if (stored) {
+      try {
+        setReport(JSON.parse(stored));
+        setLoading(false);
+        return;
+      } catch {}
+    }
+    // Fallback to backend API (works locally)
     fetch(`/api/reports/${reportId}`)
       .then(r => { if (!r.ok) throw new Error('Report not found'); return r.json(); })
       .then(data => { setReport(data); setLoading(false); })

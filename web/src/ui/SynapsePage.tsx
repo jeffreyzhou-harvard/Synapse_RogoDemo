@@ -205,31 +205,34 @@ const SynapsePage: React.FC = () => {
   // ─── Share Report ───────────────────────────────────────────────────
 
   const shareReport = useCallback(async () => {
-    const doneClaims = claims.filter(c => c.status === 'done');
-    if (doneClaims.length === 0) return;
+    const verified = claims.filter(c => c.status === 'done');
+    if (verified.length === 0) return;
     try {
-      const resp = await fetch('/api/reports', {
+      const id = Math.random().toString(36).slice(2, 10);
+      const report = {
+        id,
+        title: ingestedTitle || 'Verification Report',
+        url: inputValue.startsWith('http') ? inputValue : undefined,
+        source_type: sourceType || 'text',
+        claims: claims.map(c => ({
+          id: c.id, original: c.original, normalized: c.normalized,
+          type: c.type, status: c.status, verification: c.verification,
+        })),
+        analyzed_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+      localStorage.setItem(`synapse-report-${id}`, JSON.stringify(report));
+      // Also try backend (best-effort, won't work on Vercel serverless but works locally)
+      fetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: ingestedTitle || 'Verification Report',
-          url: inputValue.startsWith('http') ? inputValue : undefined,
-          source_type: sourceType || 'text',
-          claims: claims.map(c => ({
-            id: c.id, original: c.original, normalized: c.normalized,
-            type: c.type, status: c.status, verification: c.verification,
-          })),
-          analyzed_at: new Date().toISOString(),
-        }),
-      });
-      if (resp.ok) {
-        const { id } = await resp.json();
-        setReportId(id);
-        const url = `${window.location.origin}/report/${id}`;
-        await navigator.clipboard.writeText(url);
-        setShareToast('Report link copied!');
-        setTimeout(() => setShareToast(''), 3000);
-      }
+        body: JSON.stringify(report),
+      }).catch(() => {});
+      setReportId(id);
+      const url = `${window.location.origin}/report/${id}`;
+      await navigator.clipboard.writeText(url);
+      setShareToast('Report link copied!');
+      setTimeout(() => setShareToast(''), 3000);
     } catch (e) {
       setShareToast('Failed to save report');
       setTimeout(() => setShareToast(''), 3000);
