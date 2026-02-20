@@ -1,10 +1,11 @@
 """
-Synapse Verification Engine — 6-step claim verification pipeline.
+Synapse Financial Verification Engine — 7-step claim verification pipeline.
 
 Steps:
 1. Claim Decomposition → atomic sub-claims
-2. Multi-Source Evidence Retrieval (Semantic Scholar, Perplexity Sonar, counter-evidence)
+2. Multi-Source Evidence Retrieval (EDGAR SEC Filings, Earnings Transcripts, Financial News, counter-evidence)
 3. Evidence Quality Evaluation
+3.5. Contradiction Detection (cross-source comparison)
 4. Verdict Synthesis
 5. Provenance Tracing
 6. Corrected Claim Generation
@@ -51,12 +52,25 @@ class EvidenceSource:
     title: str
     snippet: str
     source: str  # URL or journal name
-    tier: str  # academic, institutional, journalism, counter
+    tier: str  # sec_filing, earnings_transcript, press_release, analyst_report, market_data, counter
     study_type: Optional[str] = None  # meta-analysis, RCT, cohort, etc.
     year: Optional[int] = None
     citations: Optional[int] = None
     quality_score: Optional[int] = None  # 0-100
     supports_claim: Optional[bool] = None
+    filing_type: Optional[str] = None  # 10-K, 10-Q, 8-K, etc.
+    accession_number: Optional[str] = None
+    filing_date: Optional[str] = None
+    company_ticker: Optional[str] = None
+    verified_against: Optional[str] = None
+
+@dataclass
+class ContradictionItem:
+    id: str
+    source_a: Dict[str, Any]  # {type, name, text, filing_ref?}
+    source_b: Dict[str, Any]  # {type, name, text, filing_ref?}
+    severity: str  # low, medium, high
+    explanation: str
 
 @dataclass
 class ProvenanceNode:
@@ -191,6 +205,404 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
     except Exception as e:
         print(f"[SemanticScholar] Error: {e}")
     return []
+
+# ---------------------------------------------------------------------------
+# Ticker → CIK mapping (via SEC EDGAR)
+# ---------------------------------------------------------------------------
+
+_TICKER_CIK_CACHE: Dict[str, str] = {}
+
+def _resolve_ticker_to_cik(ticker: str) -> Optional[str]:
+    """Resolve a stock ticker to SEC CIK number."""
+    ticker = ticker.upper().strip()
+    if ticker in _TICKER_CIK_CACHE:
+        return _TICKER_CIK_CACHE[ticker]
+    try:
+        resp = httpx.get(
+            "https://www.sec.gov/cgi-bin/browse-edgar",
+            params={"action": "getcompany", "company": ticker, "type": "", "dateb": "", "owner": "include", "count": "5", "search_text": "", "output": "atom"},
+            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+            timeout=10,
+        )
+        # Try ticker-to-CIK JSON endpoint first
+        resp2 = httpx.get(
+            "https://www.sec.gov/files/company_tickers.json",
+            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+            timeout=10,
+        )
+        if resp2.status_code == 200:
+            tickers = resp2.json()
+            for entry in tickers.values():
+                if entry.get("ticker", "").upper() == ticker:
+                    cik = str(entry["cik_str"]).zfill(10)
+                    _TICKER_CIK_CACHE[ticker] = cik
+                    return cik
+    except Exception as e:
+        print(f"[CIK Resolve] Error: {e}")
+    return None
+
+
+def _get_xbrl_entries(us_gaap: Dict, metric_key: str) -> List[Dict]:
+    """Get all USD entries for a given XBRL metric key."""
+    if metric_key not in us_gaap:
+        return []
+    entries = us_gaap[metric_key].get("units", {}).get("USD", [])
+    return [e for e in entries if isinstance(e, dict) and e.get("val") is not None and e.get("end")]
+
+
+def _find_xbrl_value(entries: List[Dict], target_end: str, quarterly: bool = False) -> Optional[Dict]:
+    """Find the XBRL entry matching a target period end date.
+
+    If quarterly=True, only match entries with ~3 month duration.
+    If quarterly=False, match entries with ~12 month duration (annual).
+    """
+    from datetime import datetime, timedelta
+
+    best = None
+    best_dist = 9999
+
+    for e in entries:
+        end_str = e.get("end", "")
+        start_str = e.get("start", "")
+        if not end_str:
+            continue
+
+        try:
+            end_dt = datetime.strptime(end_str, "%Y-%m-%d")
+            target_dt = datetime.strptime(target_end, "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        # Check period duration if start is available
+        if start_str:
+            try:
+                start_dt = datetime.strptime(start_str, "%Y-%m-%d")
+                duration_days = (end_dt - start_dt).days
+                if quarterly and duration_days > 120:  # More than ~4 months → skip
+                    continue
+                if not quarterly and duration_days < 300:  # Less than ~10 months → skip
+                    continue
+            except ValueError:
+                pass
+
+        dist = abs((end_dt - target_dt).days)
+        if dist < best_dist:
+            best_dist = dist
+            best = e
+
+    # Allow up to 15 days tolerance for period end matching
+    if best and best_dist <= 15:
+        return best
+    return None
+
+
+def lookup_xbrl_facts(ticker: str, claim_text: str) -> Optional[Dict]:
+    """Look up structured XBRL financial data from SEC and compare against claim.
+
+    Uses a two-step approach:
+    1. LLM extracts what metric and period the claim refers to
+    2. Python deterministically looks up the XBRL value and does the math
+    """
+    cik = _resolve_ticker_to_cik(ticker)
+    if not cik:
+        return None
+
+    try:
+        resp = httpx.get(
+            f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return None
+
+        company_data = resp.json()
+        entity_name = company_data.get("entityName", "")
+        us_gaap = company_data.get("facts", {}).get("us-gaap", {})
+
+        # Collect available metric names and their period end dates for context
+        available_metrics = {}
+        all_metric_keys = [
+            "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "GrossProfit", "NetIncomeLoss", "OperatingIncomeLoss",
+            "EarningsPerShareBasic", "EarningsPerShareDiluted",
+            "Assets", "StockholdersEquity", "CostOfGoodsAndServicesSold",
+            "CommonStockSharesOutstanding", "LongTermDebt",
+            "CashAndCashEquivalentsAtCarryingValue",
+            "OperatingExpenses", "ResearchAndDevelopmentExpense",
+            "SellingGeneralAndAdministrativeExpense",
+        ]
+        for mk in all_metric_keys:
+            entries = _get_xbrl_entries(us_gaap, mk)
+            if entries:
+                recent_ends = sorted(set(
+                    f"{e['end']} ({e.get('form','?')}, start={e.get('start','?')})"
+                    for e in entries[-12:]
+                ))
+                available_metrics[mk] = recent_ends
+
+        if not available_metrics:
+            return None
+
+        # Format available periods for context
+        periods_str = ""
+        for mk, ends in available_metrics.items():
+            periods_str += f"\n  {mk}: {'; '.join(ends[-6:])}"
+
+        # Step 1: LLM identifies WHAT to look up (not the values)
+        extract_prompt = f"""Given this financial claim about {entity_name}, identify what to look up in SEC XBRL data.
+
+CLAIM: "{claim_text}"
+
+AVAILABLE XBRL METRICS AND THEIR PERIODS:{periods_str}
+
+Instructions:
+- Identify the XBRL metric(s) needed to verify this claim
+- Determine the exact period end date that matches the claim
+- If the claim is about a DERIVED metric (e.g., gross margin = GrossProfit / Revenue), list ALL component metrics needed
+- Consider the company's fiscal year calendar based on the 10-K period end dates shown above
+
+Return ONLY valid JSON:
+{{
+  "claimed_value": "the numeric value claimed (as string, e.g. '46.2%' or '$391B')",
+  "is_derived": true/false,
+  "primary_metric": "exact XBRL key name, e.g. GrossProfit",
+  "denominator_metric": "exact XBRL key name if derived (e.g. RevenueFromContractWithCustomerExcludingAssessedTax), or null",
+  "target_period_end": "YYYY-MM-DD of the period end date to look up",
+  "is_quarterly": true/false,
+  "derivation_type": "percentage|ratio|growth_yoy|absolute|null",
+  "description": "brief description of what we're computing"
+}}
+
+If the claim cannot be matched, return {{"primary_metric": null, "description": "explanation"}}."""
+
+        raw = _call_llm(extract_prompt, "You are a financial data analyst. Identify exactly which XBRL metrics and periods to look up. Be precise with metric key names — use exactly the names shown in the available list.")
+        parsed = _parse_json_from_llm(raw)
+        if not isinstance(parsed, dict) or not parsed.get("primary_metric"):
+            return None
+
+        primary_key = parsed["primary_metric"]
+        denom_key = parsed.get("denominator_metric")
+        target_end = parsed.get("target_period_end", "")
+        is_quarterly = parsed.get("is_quarterly", False)
+        is_derived = parsed.get("is_derived", False)
+        derivation_type = parsed.get("derivation_type", "absolute")
+        claimed_value = parsed.get("claimed_value", "")
+
+        if not target_end:
+            return None
+
+        # Step 2: Deterministic lookup — Python finds the exact values
+        primary_entries = _get_xbrl_entries(us_gaap, primary_key)
+        primary_match = _find_xbrl_value(primary_entries, target_end, quarterly=is_quarterly)
+
+        if not primary_match:
+            # Try alternate revenue key
+            if primary_key == "Revenues":
+                primary_entries = _get_xbrl_entries(us_gaap, "RevenueFromContractWithCustomerExcludingAssessedTax")
+                primary_match = _find_xbrl_value(primary_entries, target_end, quarterly=is_quarterly)
+            elif primary_key == "RevenueFromContractWithCustomerExcludingAssessedTax":
+                primary_entries = _get_xbrl_entries(us_gaap, "Revenues")
+                primary_match = _find_xbrl_value(primary_entries, target_end, quarterly=is_quarterly)
+
+        if not primary_match:
+            return None
+
+        primary_val = primary_match["val"]
+        period_end = primary_match["end"]
+        period_start = primary_match.get("start", "")
+        form = primary_match.get("form", "")
+
+        # Step 3: Compute the actual value
+        if is_derived and denom_key and derivation_type == "percentage":
+            denom_entries = _get_xbrl_entries(us_gaap, denom_key)
+            denom_match = _find_xbrl_value(denom_entries, target_end, quarterly=is_quarterly)
+            if not denom_match:
+                return None
+            denom_val = denom_match["val"]
+            if denom_val == 0:
+                return None
+            actual_pct = (primary_val / denom_val) * 100
+            actual_value_str = f"{actual_pct:.1f}%"
+            computation = (
+                f"{primary_key} / {denom_key} = "
+                f"${primary_val/1e6:,.0f}M / ${denom_val/1e6:,.0f}M = "
+                f"{actual_pct:.2f}% "
+                f"(period {period_start} to {period_end}, {form})"
+            )
+            actual_raw = round(actual_pct, 2)
+        elif is_derived and derivation_type == "growth_yoy":
+            # YoY growth: need same metric from prior year
+            from datetime import datetime, timedelta
+            try:
+                end_dt = datetime.strptime(target_end, "%Y-%m-%d")
+                prior_end = (end_dt - timedelta(days=365)).strftime("%Y-%m-%d")
+            except ValueError:
+                return None
+            prior_match = _find_xbrl_value(primary_entries, prior_end, quarterly=is_quarterly)
+            if not prior_match or prior_match["val"] == 0:
+                return None
+            growth_pct = ((primary_val - prior_match["val"]) / prior_match["val"]) * 100
+            actual_value_str = f"{growth_pct:.1f}%"
+            computation = (
+                f"({primary_key} current - prior) / prior = "
+                f"(${primary_val/1e6:,.0f}M - ${prior_match['val']/1e6:,.0f}M) / ${prior_match['val']/1e6:,.0f}M = "
+                f"{growth_pct:.1f}% YoY "
+                f"(current: {period_end}, prior: {prior_match['end']})"
+            )
+            actual_raw = round(growth_pct, 2)
+        else:
+            # Absolute value
+            if abs(primary_val) >= 1e9:
+                actual_value_str = f"${primary_val/1e9:,.2f}B"
+            elif abs(primary_val) >= 1e6:
+                actual_value_str = f"${primary_val/1e6:,.0f}M"
+            else:
+                actual_value_str = f"{primary_val:,.2f}"
+            computation = f"{primary_key} = {actual_value_str} (period {period_start} to {period_end}, {form})"
+            actual_raw = primary_val
+
+        # Step 4: Compare claimed vs actual
+        # Parse claimed numeric value for comparison
+        try:
+            claimed_num = float(claimed_value.replace("%", "").replace("$", "").replace(",", "").replace("B", "").replace("M", "").replace("b", "").replace("m", "").strip())
+            # Adjust for B/M suffix
+            if "B" in claimed_value or "b" in claimed_value:
+                if actual_raw > 1e8:  # actual is in raw, claimed in billions
+                    claimed_num = claimed_num * 1e9
+            elif "M" in claimed_value or "m" in claimed_value:
+                if actual_raw > 1e5:
+                    claimed_num = claimed_num * 1e6
+
+            # For percentages, compare directly
+            if "%" in claimed_value:
+                diff = abs(claimed_num - actual_raw)
+                if diff < 0.15:
+                    match_status = "exact"
+                elif diff < 1.0:
+                    match_status = "close"
+                else:
+                    match_status = "different"
+                discrepancy = f"Claimed {claimed_value}, actual {actual_value_str} (difference: {diff:.2f} percentage points)" if match_status != "exact" else ""
+            else:
+                # For absolute values
+                if actual_raw != 0:
+                    pct_diff = abs(claimed_num - actual_raw) / abs(actual_raw) * 100
+                else:
+                    pct_diff = 100
+                if pct_diff < 1:
+                    match_status = "exact"
+                elif pct_diff < 5:
+                    match_status = "close"
+                else:
+                    match_status = "different"
+                discrepancy = f"Claimed {claimed_value}, actual {actual_value_str} ({pct_diff:.1f}% difference)" if match_status != "exact" else ""
+        except (ValueError, ZeroDivisionError):
+            match_status = "unverifiable"
+            discrepancy = "Could not parse claimed value for comparison"
+
+        return {
+            "metric_name": primary_key + (f" / {denom_key}" if denom_key and is_derived else ""),
+            "claimed_value": claimed_value,
+            "actual_value": actual_value_str,
+            "actual_raw": actual_raw,
+            "period": period_end,
+            "form": form,
+            "match": match_status,
+            "discrepancy": discrepancy,
+            "computation": computation,
+            "entity_name": entity_name,
+            "cik": cik,
+            "data_source": "SEC XBRL (EDGAR Company Facts API)",
+        }
+    except Exception as e:
+        print(f"[XBRL Lookup] Error: {e}")
+    return None
+
+
+def search_edgar(query: str, company: str = "", filing_type: str = "") -> List[Dict]:
+    """Search SEC EDGAR full-text search API for financial filings."""
+    try:
+        params: Dict[str, Any] = {
+            "q": f"{company} {query}".strip(),
+            "dateRange": "custom",
+            "startdt": "2020-01-01",
+            "enddt": "2025-12-31",
+        }
+        if filing_type:
+            params["forms"] = filing_type
+        else:
+            params["forms"] = "10-K,10-Q,8-K,DEF 14A,S-1"
+
+        resp = httpx.get(
+            "https://efts.sec.gov/LATEST/search-index",
+            params=params,
+            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            hits = data.get("hits", {}).get("hits", [])
+            results = []
+            for hit in hits[:5]:
+                src = hit.get("_source", {})
+                # Extract company name from display_names array
+                display_names = src.get("display_names", [])
+                company_name = display_names[0] if display_names else "Unknown"
+                cik = src.get("ciks", [""])[0] if src.get("ciks") else ""
+                adsh = src.get("adsh", "")
+                adsh_clean = adsh.replace("-", "")
+                file_nums = src.get("file_num", [])
+                file_num = file_nums[0] if file_nums else ""
+                # Build direct link to filing index page
+                filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{adsh_clean}/{adsh}-index.htm" if adsh and cik else ""
+                results.append({
+                    "company": company_name,
+                    "cik": cik,
+                    "filing_type": src.get("form", src.get("root_forms", [""])[0] if src.get("root_forms") else ""),
+                    "filing_date": src.get("file_date", ""),
+                    "accession_number": adsh or file_num,
+                    "url": filing_url,
+                    "snippet": f"{company_name} — {src.get('form', '')} filed {src.get('file_date', '')}. Period ending {src.get('period_ending', 'N/A')}. Filing: {adsh}",
+                })
+            if results:
+                return results
+    except Exception as e:
+        print(f"[EDGAR] Error: {e}")
+
+    # Fallback: use Perplexity Sonar with SEC-focused query
+    sonar = search_perplexity(
+        f"SEC EDGAR filing {company} {query} site:sec.gov",
+        focus="SEC filings, 10-K, 10-Q, 8-K annual reports, quarterly filings"
+    )
+    if sonar["text"]:
+        return [{
+            "company": company or "Unknown",
+            "cik": "",
+            "filing_type": filing_type or "Unknown",
+            "filing_date": "",
+            "accession_number": "",
+            "url": sonar.get("citations", [""])[0] if sonar.get("citations") else "",
+            "snippet": sonar["text"][:400],
+        }]
+    return []
+
+
+def search_earnings_transcripts(query: str, company: str = "") -> Dict:
+    """Search for earnings call transcript quotes via Perplexity Sonar with finance-focused prompts."""
+    return search_perplexity(
+        f"earnings call transcript {company} {query}. Include exact quotes from management with speaker name, quarter, and year.",
+        focus="earnings call transcripts, quarterly earnings, management commentary, guidance, analyst Q&A"
+    )
+
+
+def search_financial_news(query: str, company: str = "") -> Dict:
+    """Search for financial press releases, deal announcements, and market data."""
+    return search_perplexity(
+        f"financial news press release {company} {query}",
+        focus="press releases, deal announcements, M&A transactions, market data, analyst reports, investor presentations"
+    )
+
 
 def search_perplexity(query: str, focus: str = "") -> Dict:
     """Search via Perplexity Sonar API for grounded web results."""
@@ -410,28 +822,28 @@ def extract_url_content(url: str) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def extract_claims(text: str) -> List[Dict]:
-    """Extract verifiable factual claims from text."""
-    prompt = f"""Extract EVERY discrete, verifiable factual claim from this text. Be thorough — a 1000+ word article should yield 8-20 claims.
+    """Extract verifiable financial claims from text."""
+    prompt = f"""Extract EVERY discrete, verifiable factual claim from this text. Be thorough — focus on financial and business claims that can be verified against SEC filings, earnings calls, and market data.
 
 INCLUDE these types of claims:
-- Statistics and numbers ("40 percent of elephants...", "costs $X billion")
-- Causal/directional claims ("X causes Y", "X increases risk of Y")
-- Research findings ("studies show...", "researchers found...")
-- Categorical facts ("X is the leading cause of Y", "X is classified as Y")
-- Comparative claims ("X is more common than Y", "X has increased since Y")
-- Historical/temporal claims ("X was discovered in Y", "X has been happening since Y")
+- Financial metrics: revenue, margins, EPS, growth rates, profitability figures ("gross margin was 46.2%", "revenue of $94.8 billion")
+- Valuation: multiples, enterprise value, market cap ("trades at 25x earnings", "market cap of $3 trillion")
+- Transactions: M&A deals, IPOs, buybacks with parties, values, dates ("acquired Activision for $68.7B")
+- Regulatory: compliance statements, filing references, capital ratios ("CET1 ratio was 15.0%")
+- Guidance: forward-looking statements, projections ("expects revenue growth of 10-12%")
+- Operational: delivery numbers, headcount, market share ("delivered 1.81 million vehicles")
+- Comparative: year-over-year changes, rankings ("grew 409% year-over-year")
 
 EXCLUDE (do NOT extract):
-- Opinions, subjective statements, rhetorical questions
-- Author/researcher biographical info (names, titles, affiliations alone)
-- Trivial attributions ("according to Dr. X" without a factual claim attached)
-- Article metadata (publication date, author byline)
-- Vague statements that cannot be verified
+- Opinions, subjective analysis, rhetorical questions
+- Vague statements without specific verifiable data points
+- Author biographical info or article metadata
 
 Rules:
 - Each claim must be a single, atomic, independently verifiable statement
-- Provide the original wording and a normalized version optimized for academic search
-- Tag type: "quantitative" (has numbers), "directional" (causes/increases/decreases), "categorical" (X is Y), "provenance" (source-attributed finding)
+- Provide the original wording and a normalized version optimized for financial search
+- Tag type: "financial_metric" (revenue, margins, EPS, growth), "valuation" (multiples, EV, market cap), "transaction" (M&A, IPO, buyback), "regulatory" (compliance, filing refs, capital ratios), "guidance" (projections, forward-looking)
+- Extract company ticker when possible
 
 TEXT:
 {text[:6000]}
@@ -442,13 +854,14 @@ Return ONLY a JSON array:
     "id": "claim-1",
     "original": "exact text from source",
     "normalized": "clean searchable version",
-    "type": "quantitative|directional|categorical|provenance"
+    "type": "financial_metric|valuation|transaction|regulatory|guidance",
+    "company_ticker": "AAPL or null"
   }}
 ]
 
 Extract 8-20 claims. Be thorough. Return ONLY valid JSON, no markdown."""
 
-    raw = _call_llm(prompt, "You are a precise claim extraction engine. Return only valid JSON arrays.")
+    raw = _call_llm(prompt, "You are a precise financial claim extraction engine specializing in SEC filings, earnings data, and market metrics. Return only valid JSON arrays.")
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, list):
         return parsed
@@ -491,49 +904,89 @@ Return 2-4 sub-claims. Return ONLY valid JSON."""
 # Step 3: Multi-Source Evidence Retrieval
 # ---------------------------------------------------------------------------
 
-def retrieve_evidence(subclaim: str, claim_context: str = "") -> List[Dict]:
-    """Retrieve evidence from multiple tiers for a sub-claim."""
+def retrieve_evidence(subclaim: str, claim_context: str = "", company_ticker: str = "") -> List[Dict]:
+    """Retrieve evidence from multiple financial tiers for a sub-claim."""
     evidence = []
     eid = 0
 
-    # Tier 1: Academic (Semantic Scholar)
-    papers = search_semantic_scholar(subclaim, limit=5)
-    for p in papers:
+    # Tier 0: XBRL Structured Data Grounding (if we have a ticker)
+    if company_ticker:
+        xbrl_result = lookup_xbrl_facts(company_ticker, subclaim)
+        if xbrl_result and xbrl_result.get("match") != "unverifiable":
+            eid += 1
+            match_status = xbrl_result.get("match", "unverifiable")
+            discrepancy = xbrl_result.get("discrepancy", "")
+            computation = xbrl_result.get("computation", "")
+            snippet_parts = []
+            if xbrl_result.get("claimed_value"):
+                snippet_parts.append(f"Claimed: {xbrl_result['claimed_value']}")
+            if xbrl_result.get("actual_value"):
+                snippet_parts.append(f"Actual (SEC filing): {xbrl_result['actual_value']}")
+            if computation:
+                snippet_parts.append(f"Computation: {computation}")
+            if discrepancy:
+                snippet_parts.append(f"Discrepancy: {discrepancy}")
+
+            evidence.append({
+                "id": f"ev-{eid}",
+                "title": f"XBRL Ground Truth — {xbrl_result.get('entity_name', company_ticker)}",
+                "snippet": " | ".join(snippet_parts),
+                "source": f"SEC XBRL ({xbrl_result.get('form', 'Filing')} ending {xbrl_result.get('period', 'N/A')})",
+                "tier": "sec_filing",
+                "filing_type": xbrl_result.get("form", ""),
+                "filing_date": xbrl_result.get("period", ""),
+                "company_ticker": company_ticker,
+                "verified_against": f"{xbrl_result.get('form', '')} ending {xbrl_result.get('period', '')}",
+                "xbrl_match": match_status,
+                "xbrl_data": xbrl_result,
+            })
+
+    # Tier 1: SEC EDGAR Filings (highest authority)
+    edgar_results = search_edgar(subclaim, company=company_ticker)
+    for r in edgar_results:
         eid += 1
-        authors = ", ".join([a.get("name", "") for a in (p.get("authors") or [])[:3]])
         evidence.append({
             "id": f"ev-{eid}",
-            "title": p.get("title", ""),
-            "snippet": (p.get("abstract") or "")[:300],
-            "source": p.get("url") or f"Semantic Scholar",
-            "tier": "academic",
-            "study_type": None,
-            "year": p.get("year"),
-            "citations": p.get("citationCount", 0),
-            "authors": authors,
-            "journal": (p.get("journal") or {}).get("name", ""),
+            "title": f"{r.get('filing_type', 'SEC Filing')} — {r.get('company', 'Unknown')}",
+            "snippet": r.get("snippet", "")[:400],
+            "source": r.get("url", "SEC EDGAR"),
+            "tier": "sec_filing",
+            "filing_type": r.get("filing_type", ""),
+            "accession_number": r.get("accession_number", ""),
+            "filing_date": r.get("filing_date", ""),
+            "company_ticker": r.get("company", ""),
         })
 
-    # Tier 2: Institutional + journalism (Perplexity Sonar)
-    sonar = search_perplexity(
-        f"Find authoritative evidence about: {subclaim}",
-        focus="institutional sources, .gov, .edu, WHO, NIH, CDC, peer-reviewed"
-    )
-    if sonar["text"]:
+    # Tier 2: Earnings Transcripts
+    earnings = search_earnings_transcripts(subclaim)
+    if earnings["text"]:
         eid += 1
         evidence.append({
             "id": f"ev-{eid}",
-            "title": "Web Evidence (Institutional + Journalism)",
-            "snippet": sonar["text"][:500],
-            "source": "Perplexity Sonar",
-            "tier": "institutional",
-            "citations_urls": sonar.get("citations", []),
+            "title": "Earnings Call Transcript",
+            "snippet": earnings["text"][:500],
+            "source": "Perplexity Sonar (Earnings)",
+            "tier": "earnings_transcript",
+            "citations_urls": earnings.get("citations", []),
         })
 
-    # Tier 3: Counter-evidence (deliberate)
+    # Tier 3: Financial News / Press Releases
+    news = search_financial_news(subclaim)
+    if news["text"]:
+        eid += 1
+        evidence.append({
+            "id": f"ev-{eid}",
+            "title": "Financial News / Press Release",
+            "snippet": news["text"][:500],
+            "source": "Perplexity Sonar (Financial News)",
+            "tier": "press_release",
+            "citations_urls": news.get("citations", []),
+        })
+
+    # Tier 4: Counter-evidence (deliberate)
     counter = search_perplexity(
-        f"Find evidence AGAINST or criticism of: {subclaim}. What are the strongest arguments that this claim is wrong, exaggerated, or misleading?",
-        focus="counter-evidence, criticism, contradictions"
+        f"Find evidence AGAINST or contradicting: {subclaim}. Are there any discrepancies, restatements, corrections, or conflicting data from SEC filings, earnings calls, or analyst reports?",
+        focus="counter-evidence, financial restatements, corrections, contradictions, analyst downgrades"
     )
     if counter["text"]:
         eid += 1
@@ -604,17 +1057,71 @@ Return ONLY a JSON array:
 
 
 # ---------------------------------------------------------------------------
+# Step 3.5: Contradiction Detection
+# ---------------------------------------------------------------------------
+
+def detect_contradictions(claim: str, evidence_list: List[Dict]) -> List[Dict]:
+    """Detect contradictions between different evidence sources."""
+    if len(evidence_list) < 2:
+        return []
+
+    evidence_summary = "\n".join([
+        f"[{e['id']}] Source type: {e.get('tier','?')} | Title: {e.get('title','')} | Snippet: {e.get('snippet','')[:250]}"
+        for e in evidence_list
+    ])
+
+    prompt = f"""Compare the following evidence sources for the claim and identify any contradictions or discrepancies between them.
+
+CLAIM: "{claim}"
+
+EVIDENCE SOURCES:
+{evidence_summary}
+
+Look for:
+- Different numbers/figures for the same metric across sources
+- Conflicting dates or timelines
+- Inconsistent characterizations of the same event
+- Discrepancies between SEC filings and earnings call statements
+- Differences between press releases and regulatory filings
+
+Return ONLY a JSON array of contradictions found (empty array [] if none):
+[
+  {{
+    "id": "contra-1",
+    "source_a": {{ "id": "ev-X", "type": "source type", "name": "source title", "text": "relevant quote from source A" }},
+    "source_b": {{ "id": "ev-Y", "type": "source type", "name": "source title", "text": "relevant quote from source B" }},
+    "severity": "low|medium|high",
+    "explanation": "Why these sources contradict each other"
+  }}
+]
+
+Return ONLY valid JSON."""
+
+    raw = _call_llm(prompt, "You are a financial contradiction detection engine. Identify discrepancies between evidence sources with precision.")
+    parsed = _parse_json_from_llm(raw)
+    if isinstance(parsed, list):
+        return parsed
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Step 5: Verdict Synthesis
 # ---------------------------------------------------------------------------
 
 def synthesize_verdict(subclaim: str, evidence_list: List[Dict]) -> Dict:
-    """Synthesize a verdict for a sub-claim based on all evidence."""
+    """Synthesize a verdict for a sub-claim based on all evidence, weighted by financial source authority."""
     evidence_summary = "\n".join([
-        f"[{e['id']}] Quality: {e.get('quality_score', '?')}/100 | Type: {e.get('study_type','?')} | Supports: {e.get('supports_claim','?')} | {e.get('snippet','')[:200]}"
+        f"[{e['id']}] Tier: {e.get('tier','?')} | Quality: {e.get('quality_score', '?')}/100 | Type: {e.get('study_type','?')} | Filing: {e.get('filing_type','')} | Supports: {e.get('supports_claim','?')} | {e.get('snippet','')[:200]}"
         for e in evidence_list
     ])
 
-    prompt = f"""Based on ALL the evidence below, synthesize a verdict for this claim:
+    prompt = f"""Based on ALL the evidence below, synthesize a verdict for this financial claim.
+
+IMPORTANT: Weight evidence by source authority:
+- SEC Filings (10-K, 10-Q, 8-K) = HIGHEST authority — audited, legally binding
+- Earnings Transcripts = HIGH authority — direct management statements
+- Press Releases = MEDIUM authority — company-issued but not audited
+- News Reports / Analyst Reports = LOW authority — secondary sources
 
 CLAIM: "{subclaim}"
 
@@ -625,6 +1132,7 @@ Provide:
 - verdict: one of "supported", "partially_supported", "exaggerated", "contradicted", "unsupported"
 - confidence: "high", "medium", or "low"
 - summary: 2-3 sentences explaining the verdict
+- verified_against: what the claim was verified against, e.g. "10-K FY2024", "Q3 2024 Earnings Call", "Press Release" (or null)
 - strongest_supporting: ID of the strongest supporting evidence (or null)
 - strongest_opposing: ID of the strongest opposing evidence (or null)
 
@@ -633,11 +1141,12 @@ Return ONLY valid JSON:
   "verdict": "...",
   "confidence": "...",
   "summary": "...",
+  "verified_against": "...",
   "strongest_supporting": "ev-X" or null,
   "strongest_opposing": "ev-Y" or null
 }}"""
 
-    raw = _call_llm(prompt, "You are a rigorous fact-checking verdict synthesizer. Be precise and evidence-based.")
+    raw = _call_llm(prompt, "You are a rigorous financial fact-checking verdict synthesizer. Weight SEC filings highest. Be precise and evidence-based.")
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -784,12 +1293,12 @@ Return ONLY valid JSON:
 # ---------------------------------------------------------------------------
 
 def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, None, None]:
-    """Run the full 6-step verification pipeline, yielding events for SSE streaming."""
+    """Run the full 7-step financial verification pipeline, yielding events for SSE streaming."""
 
     t0 = time.time()
 
     # --- Step 1: Decomposition ---
-    yield VerificationEvent("step_start", {"step": "decomposition", "label": "Decomposing claim..."})
+    yield VerificationEvent("step_start", {"step": "decomposition", "label": "Decomposing financial claim..."})
     subclaims = decompose_claim(claim_text)
     for sc in subclaims:
         yield VerificationEvent("subclaim", {"id": sc["id"], "text": sc["text"], "type": sc["type"]})
@@ -797,30 +1306,50 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
 
     # --- Step 2: Evidence Retrieval (per sub-claim) ---
     all_evidence: List[Dict] = []
-    yield VerificationEvent("step_start", {"step": "evidence_retrieval", "label": "Searching for evidence..."})
+    yield VerificationEvent("step_start", {"step": "evidence_retrieval", "label": "Searching SEC filings, earnings & news..."})
+
+    # Try to extract a company ticker from the claim for XBRL lookup
+    ticker_prompt = f'What stock ticker (e.g. AAPL, MSFT, TSLA) does this claim reference? Return ONLY the ticker symbol, or "NONE" if no specific company.\n\nClaim: "{claim_text}"'
+    detected_ticker = _call_llm(ticker_prompt, "Return only a stock ticker symbol or NONE.").strip().upper().replace('"', '').replace("'", "")
+    if detected_ticker == "NONE" or len(detected_ticker) > 6 or " " in detected_ticker:
+        detected_ticker = ""
 
     for sc in subclaims:
         yield VerificationEvent("search_start", {"subclaim_id": sc["id"], "subclaim": sc["text"]})
-        evidence = retrieve_evidence(sc["text"], claim_text)
+        evidence = retrieve_evidence(sc["text"], claim_text, company_ticker=detected_ticker)
         for ev in evidence:
             ev["subclaim_id"] = sc["id"]
-            yield VerificationEvent("evidence_found", {
+            ev_event: Dict[str, Any] = {
                 "subclaim_id": sc["id"],
                 "id": ev["id"],
                 "title": ev.get("title", ""),
-                "snippet": ev.get("snippet", "")[:200],
+                "snippet": ev.get("snippet", "")[:300],
                 "tier": ev.get("tier", ""),
                 "source": ev.get("source", ""),
                 "year": ev.get("year"),
                 "citations": ev.get("citations"),
-            })
+                "filing_type": ev.get("filing_type"),
+                "accession_number": ev.get("accession_number"),
+                "filing_date": ev.get("filing_date"),
+                "company_ticker": ev.get("company_ticker"),
+                "verified_against": ev.get("verified_against"),
+            }
+            # Include XBRL grounding data if present
+            if ev.get("xbrl_data"):
+                xd = ev["xbrl_data"]
+                ev_event["xbrl_match"] = xd.get("match")
+                ev_event["xbrl_claimed"] = xd.get("claimed_value")
+                ev_event["xbrl_actual"] = xd.get("actual_value")
+                ev_event["xbrl_discrepancy"] = xd.get("discrepancy")
+                ev_event["xbrl_computation"] = xd.get("computation")
+            yield VerificationEvent("evidence_found", ev_event)
         all_evidence.extend(evidence)
         yield VerificationEvent("search_complete", {"subclaim_id": sc["id"], "count": len(evidence)})
 
     yield VerificationEvent("step_complete", {"step": "evidence_retrieval", "total_sources": len(all_evidence), "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Step 3: Evidence Quality Evaluation ---
-    yield VerificationEvent("step_start", {"step": "evaluation", "label": "Evaluating evidence quality..."})
+    yield VerificationEvent("step_start", {"step": "evaluation", "label": "Evaluating source quality..."})
     all_evidence = evaluate_evidence(all_evidence, claim_text)
     for ev in all_evidence:
         yield VerificationEvent("evidence_scored", {
@@ -831,6 +1360,14 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
             "assessment": ev.get("assessment", ""),
         })
     yield VerificationEvent("step_complete", {"step": "evaluation", "duration_ms": int((time.time() - t0) * 1000)})
+
+    # --- Step 3.5: Contradiction Detection ---
+    yield VerificationEvent("step_start", {"step": "contradictions", "label": "Detecting cross-source contradictions..."})
+    contradictions = detect_contradictions(claim_text, all_evidence)
+    for c in contradictions:
+        yield VerificationEvent("contradiction_detected", c)
+    yield VerificationEvent("contradictions_complete", {"count": len(contradictions), "duration_ms": int((time.time() - t0) * 1000)})
+    yield VerificationEvent("step_complete", {"step": "contradictions", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Step 4: Verdict Synthesis (per sub-claim, then overall) ---
     yield VerificationEvent("step_start", {"step": "synthesis", "label": "Synthesizing verdicts..."})
@@ -848,6 +1385,7 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
             "verdict": verdict.get("verdict", "unsupported"),
             "confidence": verdict.get("confidence", "low"),
             "summary": verdict.get("summary", ""),
+            "verified_against": verdict.get("verified_against"),
         })
 
     overall = synthesize_overall_verdict(claim_text, subclaim_verdicts)
@@ -888,4 +1426,5 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         "total_sources": len(all_evidence),
         "subclaims_count": len(subclaims),
         "overall_verdict": overall.get("verdict", "unsupported"),
+        "contradictions_count": len(contradictions),
     })

@@ -13,6 +13,16 @@ interface EvidenceItem {
   tier: string; source: string; year?: number; citations?: number;
   quality_score?: number; study_type?: string;
   supports_claim?: boolean | string; assessment?: string;
+  filing_type?: string; accession_number?: string; filing_date?: string;
+  company_ticker?: string; verified_against?: string;
+}
+
+interface ContradictionItem {
+  id: string;
+  source_a: { type: string; name: string; text: string; filing_ref?: string };
+  source_b: { type: string; name: string; text: string; filing_ref?: string };
+  severity: 'low' | 'medium' | 'high';
+  explanation: string;
 }
 
 interface ProvenanceNode {
@@ -31,7 +41,8 @@ interface ClaimData {
   verification?: {
     subclaims: SubClaim[];
     evidence: EvidenceItem[];
-    overallVerdict?: { verdict: string; confidence: string; summary: string };
+    contradictions?: ContradictionItem[];
+    overallVerdict?: { verdict: string; confidence: string; summary: string; verified_against?: string };
     provenanceNodes: ProvenanceNode[];
     provenanceEdges: { from: string; to: string }[];
     provenanceAnalysis?: string;
@@ -59,6 +70,23 @@ const VERDICT_COLORS: Record<string, { bg: string; text: string; border: string 
 
 const MUTATION_COLORS: Record<string, string> = {
   none: '#4ade80', slight: '#fbbf24', significant: '#fb923c', severe: '#f87171',
+};
+
+const TIER_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  sec_filing:          { label: 'SEC Filing',     icon: '⚖️', color: '#d4af37' },
+  earnings_transcript: { label: 'Earnings Call',  icon: '🎙️', color: '#6b9bd2' },
+  press_release:       { label: 'Press Release',  icon: '📰', color: '#5ec4a0' },
+  analyst_report:      { label: 'Analyst Report', icon: '📊', color: '#a78bfa' },
+  market_data:         { label: 'Market Data',    icon: '📈', color: '#4ade80' },
+  counter:             { label: 'Contradicting',  icon: '⚠️', color: '#f87171' },
+};
+
+const CLAIM_TYPE_CONFIG: Record<string, { color: string; label: string }> = {
+  financial_metric: { color: '#4ade80', label: 'Metric' },
+  valuation: { color: '#a78bfa', label: 'Valuation' },
+  transaction: { color: '#6b9bd2', label: 'Transaction' },
+  regulatory: { color: '#d4af37', label: 'Regulatory' },
+  guidance: { color: '#fbbf24', label: 'Guidance' },
 };
 
 // ─── Component ───────────────────────────────────────────────────────────
@@ -244,6 +272,14 @@ const ReportPage: React.FC = () => {
                           <span style={{ fontSize: '10px', color: '#555555', fontWeight: 600, textTransform: 'uppercase' }}>
                             {v.overallVerdict.confidence}
                           </span>
+                          {(() => {
+                            const tc = CLAIM_TYPE_CONFIG[claim.type];
+                            return tc ? (
+                              <span style={{ fontSize: '8px', fontWeight: 700, color: tc.color, padding: '1px 5px', borderRadius: '3px', backgroundColor: `${tc.color}15`, border: `1px solid ${tc.color}30`, textTransform: 'uppercase' }}>
+                                {tc.label}
+                              </span>
+                            ) : null;
+                          })()}
                           <span style={{ fontSize: '12px', color: '#888888', flex: 1 }}>
                             {v.overallVerdict.summary}
                           </span>
@@ -292,14 +328,56 @@ const ReportPage: React.FC = () => {
                             <div style={{ fontSize: '10px', color: '#666666', marginTop: '2px', lineHeight: 1.4 }}>
                               {ev.snippet?.slice(0, 150)}{(ev.snippet?.length || 0) > 150 ? '...' : ''}
                             </div>
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: '#444444' }}>
-                              <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{ev.tier}</span>
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: '#444444', alignItems: 'center' }}>
+                              {(() => {
+                                const t = TIER_LABELS[ev.tier] || { label: ev.tier, icon: '📋', color: '#888' };
+                                return (
+                                  <span style={{ fontWeight: 700, color: t.color, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <span>{t.icon}</span> {t.label}
+                                  </span>
+                                );
+                              })()}
+                              {ev.filing_type && <span style={{ color: '#d4af37' }}>{ev.filing_type}</span>}
                               {ev.year && <span>{ev.year}</span>}
                               {ev.quality_score != null && <span>Q: {ev.quality_score}</span>}
                             </div>
                           </div>
                         ))}
                         {v.evidence.length > 5 && <div style={{ fontSize: '10px', color: '#444444', marginTop: '4px' }}>+{v.evidence.length - 5} more sources</div>}
+                      </div>
+                    )}
+
+                    {/* Contradictions */}
+                    {v.contradictions && v.contradictions.length > 0 && (
+                      <div style={{ marginBottom: '16px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#555555', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Contradictions ({v.contradictions.length})</div>
+                        {v.contradictions.map((c, ci) => {
+                          const sevColor = c.severity === 'high' ? '#f87171' : c.severity === 'medium' ? '#fb923c' : '#fbbf24';
+                          return (
+                            <div key={c.id || ci} style={{
+                              padding: '10px 12px', borderRadius: '8px', marginBottom: '6px',
+                              border: `1px solid ${sevColor}30`, backgroundColor: '#0a0808',
+                            }}>
+                              <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '8px', fontWeight: 800, color: sevColor, textTransform: 'uppercase', padding: '1px 5px', borderRadius: '3px', backgroundColor: `${sevColor}15` }}>
+                                  {c.severity}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                                <div style={{ flex: 1, fontSize: '10px', color: '#aaa', lineHeight: 1.4 }}>
+                                  <span style={{ fontWeight: 700, color: '#d4af37' }}>{c.source_a?.type}: </span>
+                                  "{c.source_a?.text?.slice(0, 100)}"
+                                </div>
+                                <span style={{ fontSize: '9px', color: sevColor, fontWeight: 800, alignSelf: 'center' }}>VS</span>
+                                <div style={{ flex: 1, fontSize: '10px', color: '#aaa', lineHeight: 1.4 }}>
+                                  <span style={{ fontWeight: 700, color: '#6b9bd2' }}>{c.source_b?.type}: </span>
+                                  "{c.source_b?.text?.slice(0, 100)}"
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#888', lineHeight: 1.4 }}>{c.explanation}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -371,7 +449,7 @@ const ReportPage: React.FC = () => {
         textAlign: 'center',
       }}>
         <div style={{ fontSize: '13px', fontWeight: 700, color: '#333333', marginBottom: '12px' }}>
-          Powered by Synapse — Every claim, interrogated
+          Powered by Synapse — Financial AI Verification Engine
         </div>
         <a href="/" style={{
           display: 'inline-block', padding: '8px 20px', borderRadius: '6px',
@@ -382,7 +460,7 @@ const ReportPage: React.FC = () => {
           {[
             { label: 'Claude Sonnet', color: '#e8c8a0' },
             { label: 'Perplexity Sonar', color: '#6bccc8' },
-            { label: 'Semantic Scholar', color: '#6b9bd2' },
+            { label: 'SEC EDGAR', color: '#d4af37' },
           ].map(s => (
             <span key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: s.color, opacity: 0.6 }} />

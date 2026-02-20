@@ -4158,6 +4158,60 @@ def api_get_report(report_id: str):
     return report
 
 
+class AuditLogRequest(BaseModel):
+    title: str
+    url: Optional[str] = None
+    claims: list
+    analyzed_at: Optional[str] = None
+
+@app.post("/api/export-audit-log")
+def api_export_audit_log(req: AuditLogRequest):
+    """Generate a structured audit trail for compliance purposes."""
+    audit_log = {
+        "compliance_metadata": {
+            "verification_id": str(_uuid.uuid4()),
+            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+            "engine_version": "synapse-financial-1.0",
+            "source_title": req.title,
+            "source_url": req.url,
+            "analyzed_at": req.analyzed_at,
+        },
+        "claims": [],
+    }
+    for claim in req.claims:
+        claim_entry = {
+            "claim_text": claim.get("original", ""),
+            "claim_type": claim.get("type", ""),
+            "verdict": None,
+            "confidence": None,
+            "verified_against": None,
+            "evidence_chain": [],
+            "contradictions": [],
+        }
+        v = claim.get("verification", {})
+        if v:
+            ov = v.get("overallVerdict", {})
+            claim_entry["verdict"] = ov.get("verdict")
+            claim_entry["confidence"] = ov.get("confidence")
+            claim_entry["verified_against"] = ov.get("verified_against")
+            for ev in v.get("evidence", []):
+                claim_entry["evidence_chain"].append({
+                    "source_id": ev.get("id"),
+                    "title": ev.get("title"),
+                    "tier": ev.get("tier"),
+                    "source_url": ev.get("source"),
+                    "filing_type": ev.get("filing_type"),
+                    "accession_number": ev.get("accession_number"),
+                    "filing_date": ev.get("filing_date"),
+                    "quality_score": ev.get("quality_score"),
+                    "supports_claim": ev.get("supports_claim"),
+                })
+            for c in v.get("contradictions", []):
+                claim_entry["contradictions"].append(c)
+        audit_log["claims"].append(claim_entry)
+    return audit_log
+
+
 class IngestRequest(BaseModel):
     url: Optional[str] = None
     text: Optional[str] = None
@@ -4165,7 +4219,7 @@ class IngestRequest(BaseModel):
 class IngestResponse(BaseModel):
     title: str
     text: str
-    source_type: str  # url, text, audio
+    source_type: str  # url, text, audio, sec_filing, earnings_transcript, financial_document
     url: Optional[str] = None
 
 class ExtractClaimsRequest(BaseModel):
@@ -4188,13 +4242,20 @@ class VerifyRequest(BaseModel):
 def api_ingest(req: IngestRequest):
     """Ingest content from URL or raw text. Returns clean extracted text."""
     if req.url:
+        # Detect SEC filing URLs
+        source_type = "url"
+        if "sec.gov" in req.url.lower():
+            source_type = "sec_filing"
+        elif any(kw in req.url.lower() for kw in ["earnings", "transcript"]):
+            source_type = "earnings_transcript"
+
         result = extract_url_content(req.url)
         if result.get("error"):
             raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {result['error']}")
         return IngestResponse(
             title=result.get("title", req.url),
             text=result.get("text", ""),
-            source_type="url",
+            source_type=source_type,
             url=req.url,
         )
     elif req.text:
@@ -4270,86 +4331,29 @@ def api_verify(req: VerifyRequest):
     )
 
 
-# ─── Trending Tweets Feed ─────────────────────────────────────────────────
+# ─── Financial Claims Feed ────────────────────────────────────────────────
+
+@app.get("/api/financial-claims-feed")
+def api_financial_claims_feed():
+    """Return hardcoded demo financial claims showcasing verification scenarios."""
+    return {"claims": [
+        {"id": "fc-1", "text": "Apple's gross margin expanded to 46.2% in Q4 FY2024, up from 45.2% a year ago", "company": "AAPL", "type": "financial_metric", "source": "10-K FY2024"},
+        {"id": "fc-2", "text": "Microsoft completed the $68.7B Activision Blizzard acquisition in Oct 2023", "company": "MSFT", "type": "transaction", "source": "8-K Filing"},
+        {"id": "fc-3", "text": "Nvidia's data center revenue reached $47.5B in FY2024, up 217% YoY", "company": "NVDA", "type": "financial_metric", "source": "10-K FY2024"},
+        {"id": "fc-4", "text": "JPMorgan's CET1 capital ratio was 15.0% as of Q4 2024", "company": "JPM", "type": "regulatory", "source": "10-Q"},
+        {"id": "fc-5", "text": "Tesla delivered 1.81 million vehicles globally in 2023, missing its 2M target", "company": "TSLA", "type": "financial_metric", "source": "Earnings Call"},
+        {"id": "fc-6", "text": "Goldman Sachs' trading revenue surged to $6.6B in Q3 2024", "company": "GS", "type": "financial_metric", "source": "10-Q"},
+        {"id": "fc-7", "text": "Amazon Web Services generated $90.8B in revenue in 2023", "company": "AMZN", "type": "financial_metric", "source": "10-K FY2023"},
+        {"id": "fc-8", "text": "Broadcom completed its $61B acquisition of VMware in Nov 2023", "company": "AVGO", "type": "transaction", "source": "8-K Filing"},
+    ]}
+
+
+# ─── Legacy Trending Tweets (kept for backwards compat) ──────────────────
 
 import httpx as _httpx
 import time as _time
 
-_tweets_cache: Dict[str, Any] = {"data": [], "ts": 0}
-_TWEETS_CACHE_TTL = 300  # 5 minutes
-
-_CLAIM_QUERIES = [
-    '"according to a study" -is:retweet lang:en',
-    '"research shows" -is:retweet lang:en',
-    '"scientists found" -is:retweet lang:en',
-    '"a new report" -is:retweet lang:en',
-    '"percent of" -is:retweet lang:en',
-    '"breaking" health OR climate OR AI OR economy -is:retweet lang:en',
-]
-
 @app.get("/api/trending-tweets")
 def api_trending_tweets():
-    """Fetch real trending tweets containing verifiable claims via X API v2."""
-    bearer = os.getenv("X_BEARER_TOKEN")
-    if not bearer:
-        return {"tweets": [], "error": "X_BEARER_TOKEN not configured"}
-
-    # Return cached if fresh
-    if _time.time() - _tweets_cache["ts"] < _TWEETS_CACHE_TTL and _tweets_cache["data"]:
-        return {"tweets": _tweets_cache["data"]}
-
-    all_tweets = []
-    seen_ids = set()
-
-    for query in _CLAIM_QUERIES:
-        if len(all_tweets) >= 20:
-            break
-        try:
-            resp = _httpx.get(
-                "https://api.x.com/2/tweets/search/recent",
-                params={
-                    "query": query,
-                    "max_results": 10,
-                    "tweet.fields": "author_id,created_at,text,public_metrics",
-                    "expansions": "author_id",
-                    "user.fields": "name,username,profile_image_url",
-                },
-                headers={"Authorization": f"Bearer {bearer}"},
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                tweets = data.get("data", [])
-                users = {u["id"]: u for u in data.get("includes", {}).get("users", [])}
-
-                for t in tweets:
-                    if t["id"] in seen_ids:
-                        continue
-                    seen_ids.add(t["id"])
-                    author = users.get(t.get("author_id"), {})
-                    metrics = t.get("public_metrics", {})
-                    all_tweets.append({
-                        "id": t["id"],
-                        "text": t["text"],
-                        "author": author.get("name", "Unknown"),
-                        "handle": f"@{author.get('username', '')}",
-                        "avatar": author.get("profile_image_url", ""),
-                        "created_at": t.get("created_at", ""),
-                        "likes": metrics.get("like_count", 0),
-                        "retweets": metrics.get("retweet_count", 0),
-                        "replies": metrics.get("reply_count", 0),
-                        "url": f"https://x.com/{author.get('username', 'i')}/status/{t['id']}",
-                    })
-            elif resp.status_code == 429:
-                print(f"[Trending] Rate limited on query: {query}")
-                break
-            else:
-                print(f"[Trending] X API {resp.status_code} for query: {query}")
-        except Exception as e:
-            print(f"[Trending] Error fetching tweets: {e}")
-
-    # Cache results
-    _tweets_cache["data"] = all_tweets
-    _tweets_cache["ts"] = _time.time()
-
-    return {"tweets": all_tweets}
+    """Redirect to financial claims feed."""
+    return api_financial_claims_feed()

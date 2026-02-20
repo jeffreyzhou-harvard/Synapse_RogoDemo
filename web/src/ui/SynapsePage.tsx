@@ -38,6 +38,24 @@ interface EvidenceItem {
   study_type?: string;
   supports_claim?: boolean | string;
   assessment?: string;
+  filing_type?: string;
+  accession_number?: string;
+  filing_date?: string;
+  company_ticker?: string;
+  verified_against?: string;
+  xbrl_match?: string;
+  xbrl_claimed?: string;
+  xbrl_actual?: string;
+  xbrl_discrepancy?: string;
+  xbrl_computation?: string;
+}
+
+interface ContradictionItem {
+  id: string;
+  source_a: { id?: string; type: string; name: string; text: string; filing_ref?: string };
+  source_b: { id?: string; type: string; name: string; text: string; filing_ref?: string };
+  severity: 'low' | 'medium' | 'high';
+  explanation: string;
 }
 
 interface ProvenanceNode {
@@ -65,7 +83,8 @@ interface CorrectedClaim {
 interface VerificationState {
   subclaims: SubClaim[];
   evidence: EvidenceItem[];
-  overallVerdict?: { verdict: string; confidence: string; summary: string; detail?: string };
+  contradictions: ContradictionItem[];
+  overallVerdict?: { verdict: string; confidence: string; summary: string; detail?: string; verified_against?: string };
   provenanceNodes: ProvenanceNode[];
   provenanceEdges: ProvenanceEdge[];
   provenanceAnalysis?: string;
@@ -89,10 +108,12 @@ const VERDICT_COLORS: Record<string, { bg: string; text: string; border: string;
 };
 
 const TIER_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  academic:      { label: 'Academic',      icon: '📄', color: '#a0a0a0' },
-  institutional: { label: 'Institutional', icon: '🏛️', color: '#c0c0c0' },
-  journalism:    { label: 'Journalism',    icon: '📰', color: '#b0b0b0' },
-  counter:       { label: 'Counter',       icon: '⚔️', color: '#f87171' },
+  sec_filing:           { label: 'SEC Filing',      icon: '⚖️', color: '#d4af37' },
+  earnings_transcript:  { label: 'Earnings Call',   icon: '🎙️', color: '#6b9bd2' },
+  press_release:        { label: 'Press Release',   icon: '📰', color: '#5ec4a0' },
+  analyst_report:       { label: 'Analyst Report',  icon: '📊', color: '#a78bfa' },
+  market_data:          { label: 'Market Data',     icon: '📈', color: '#4ade80' },
+  counter:              { label: 'Contradicting',   icon: '⚠️', color: '#f87171' },
 };
 
 const MUTATION_COLORS: Record<string, string> = {
@@ -106,6 +127,7 @@ const STEP_ICONS: Record<string, string> = {
   decomposition: '🔬',
   evidence_retrieval: '🔍',
   evaluation: '⚖️',
+  contradictions: '⚡',
   synthesis: '🧠',
   provenance: '🔗',
   correction: '✏️',
@@ -124,22 +146,21 @@ interface AgentChip {
 
 const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
   claude:    { color: '#e8c8a0', label: 'Claude' },
-  sscholar:  { color: '#6b9bd2', label: 'S.Scholar' },
-  pubmed:    { color: '#5ec4a0', label: 'PubMed' },
+  edgar:     { color: '#d4af37', label: 'EDGAR' },
   sonar:     { color: '#6bccc8', label: 'Sonar' },
   deepgram:  { color: '#a78bfa', label: 'Deepgram' },
 };
 
 const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
-  { id: 'extract',    service: 'sonar',    task: 'Extract',    label: 'Sonar · Extract',            color: '#6bccc8' },
-  { id: 'decompose',  service: 'claude',   task: 'Decompose',  label: 'Claude · Decompose',         color: '#e8c8a0' },
-  { id: 'sscholar',   service: 'sscholar', task: 'Papers',     label: 'S.Scholar · Papers',         color: '#6b9bd2' },
-  { id: 'sonar_web',  service: 'sonar',    task: 'Web',        label: 'Sonar · Web',                color: '#6bccc8' },
-  { id: 'sonar_counter', service: 'sonar', task: 'Counter',    label: 'Sonar · Counter',            color: '#6bccc8' },
-  { id: 'evaluate',   service: 'claude',   task: 'Evaluate',   label: 'Claude · Evaluate',          color: '#e8c8a0' },
-  { id: 'synthesize', service: 'claude',   task: 'Synthesize', label: 'Claude · Synthesize',        color: '#e8c8a0' },
-  { id: 'provenance', service: 'sonar',    task: 'Provenance', label: 'Sonar+Claude · Provenance',  color: '#6bccc8' },
-  { id: 'correct',    service: 'claude',   task: 'Correct',    label: 'Claude · Correct',           color: '#e8c8a0' },
+  { id: 'extract',       service: 'claude',  task: 'Extract',        label: 'Claude · Extract Claims',      color: '#e8c8a0' },
+  { id: 'decompose',     service: 'claude',  task: 'Decompose',      label: 'Claude · Decompose',           color: '#e8c8a0' },
+  { id: 'edgar',         service: 'edgar',   task: 'SEC Filings',    label: 'EDGAR · SEC Filings',          color: '#d4af37' },
+  { id: 'sonar_web',     service: 'sonar',   task: 'Earnings/News',  label: 'Sonar · Earnings & News',      color: '#6bccc8' },
+  { id: 'sonar_counter', service: 'sonar',   task: 'Counter',        label: 'Claude · Contradictions',      color: '#e8c8a0' },
+  { id: 'evaluate',      service: 'claude',  task: 'Evaluate',       label: 'Claude · Evaluate',            color: '#e8c8a0' },
+  { id: 'synthesize',    service: 'claude',  task: 'Synthesize',     label: 'Claude · Synthesize',          color: '#e8c8a0' },
+  { id: 'provenance',    service: 'sonar',   task: 'Provenance',     label: 'Sonar+Claude · Provenance',    color: '#6bccc8' },
+  { id: 'correct',       service: 'claude',  task: 'Correct',        label: 'Claude · Correct',             color: '#e8c8a0' },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -159,7 +180,7 @@ const SynapsePage: React.FC = () => {
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'provenance' | 'correction'>('subclaims');
+  const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'contradictions' | 'provenance' | 'correction'>('subclaims');
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [verdictExpanded, setVerdictExpanded] = useState(false);
@@ -277,13 +298,13 @@ const SynapsePage: React.FC = () => {
 
   // ─── Trending Tweets (live from X API) ─────────────────────────────
 
-  const [trendingTweets, setTrendingTweets] = useState<any[]>([]);
+  const [financialClaims, setFinancialClaims] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/trending-tweets`)
+    fetch(`${API_BASE}/api/financial-claims-feed`)
       .then(r => r.json())
       .then(data => {
-        if (data.tweets?.length) setTrendingTweets(data.tweets);
+        if (data.claims?.length) setFinancialClaims(data.claims);
       })
       .catch(() => {});
   }, []);
@@ -291,12 +312,12 @@ const SynapsePage: React.FC = () => {
   // ─── Preloaded Examples ────────────────────────────────────────────
 
   const PRELOADED_EXAMPLES = [
-    { icon: '🏥', claim: 'Intermittent fasting reduces inflammation by 40%', verdict: 'exaggerated', source: 'Health Blog' },
-    { icon: '🤖', claim: 'AI will replace 80% of jobs by 2030', verdict: 'unsupported', source: 'Tech Article' },
-    { icon: '🌍', claim: 'Sea levels will rise 3 feet by 2050', verdict: 'partially_supported', source: 'Climate Report' },
-    { icon: '💊', claim: 'Vitamin D prevents COVID infection', verdict: 'contradicted', source: 'Social Media' },
-    { icon: '📈', claim: 'Remote workers are 13% more productive', verdict: 'exaggerated', source: 'Business Insider' },
-    { icon: '🐘', claim: 'African elephants in captivity are getting fat', verdict: 'supported', source: 'UAB News' },
+    { icon: '🍎', claim: "Apple's gross margin was 46.2% in Q4 2024", verdict: 'supported', source: '10-K FY2024' },
+    { icon: '🎮', claim: 'Microsoft acquired Activision Blizzard for $68.7 billion', verdict: 'supported', source: '8-K Filing' },
+    { icon: '🚗', claim: 'Tesla delivered 1.81 million vehicles in 2023', verdict: 'supported', source: 'Earnings Call' },
+    { icon: '🏦', claim: "Goldman Sachs reported trading revenue of $6.6B in Q3 2024", verdict: 'partially_supported', source: '10-Q' },
+    { icon: '🟢', claim: "Nvidia's data center revenue grew 409% year-over-year", verdict: 'exaggerated', source: '10-K FY2024' },
+    { icon: '🏛️', claim: "JPMorgan's CET1 capital ratio was 15.0% as of Q4 2024", verdict: 'supported', source: '10-Q' },
   ];
 
   // ─── Ingest ──────────────────────────────────────────────────────────
@@ -402,7 +423,7 @@ const SynapsePage: React.FC = () => {
 
     // Update claim status
     setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'verifying' as const, verification: {
-      subclaims: [], evidence: [], provenanceNodes: [], provenanceEdges: [],
+      subclaims: [], evidence: [], contradictions: [], provenanceNodes: [], provenanceEdges: [],
       currentStep: '', stepLabel: '', completedSteps: [],
     }} : c));
 
@@ -463,6 +484,12 @@ const SynapsePage: React.FC = () => {
                     id: data.id, subclaim_id: data.subclaim_id, title: data.title,
                     snippet: data.snippet, tier: data.tier, source: data.source,
                     year: data.year, citations: data.citations,
+                    filing_type: data.filing_type, accession_number: data.accession_number,
+                    filing_date: data.filing_date, company_ticker: data.company_ticker,
+                    verified_against: data.verified_against,
+                    xbrl_match: data.xbrl_match, xbrl_claimed: data.xbrl_claimed,
+                    xbrl_actual: data.xbrl_actual, xbrl_discrepancy: data.xbrl_discrepancy,
+                    xbrl_computation: data.xbrl_computation,
                   }];
                   break;
                 case 'evidence_scored':
@@ -488,6 +515,11 @@ const SynapsePage: React.FC = () => {
                 case 'provenance_complete':
                   v.provenanceAnalysis = data.analysis;
                   break;
+                case 'contradiction_detected':
+                  v.contradictions = [...v.contradictions, data as ContradictionItem];
+                  break;
+                case 'contradictions_complete':
+                  break;
                 case 'corrected_claim':
                   v.correctedClaim = data as CorrectedClaim;
                   break;
@@ -509,30 +541,30 @@ const SynapsePage: React.FC = () => {
             switch (type) {
               case 'step_start': {
                 const chipMap: Record<string, string> = {
-                  decomposition: 'decompose', evaluation: 'evaluate',
+                  decomposition: 'decompose', evaluation: 'evaluate', contradictions: 'sonar_counter',
                   synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
                 };
                 const chipId = chipMap[data.step];
                 if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'Sonar' : 'Claude'); }
                 if (data.step === 'evidence_retrieval') {
                   // Activate all search chips simultaneously
-                  activateChip('sscholar'); activateChip('sonar_web'); activateChip('sonar_counter');
-                  bumpApiCalls('Semantic Scholar'); bumpApiCalls('Sonar'); bumpApiCalls('Sonar');
+                  activateChip('edgar'); activateChip('sonar_web');
+                  bumpApiCalls('EDGAR'); bumpApiCalls('Sonar');
                 }
                 break;
               }
               case 'step_complete': {
                 const completeMap: Record<string, string[]> = {
-                  decomposition: ['decompose'], evaluation: ['evaluate'],
+                  decomposition: ['decompose'], evaluation: ['evaluate'], contradictions: ['sonar_counter'],
                   synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
-                  evidence_retrieval: ['sscholar', 'sonar_web', 'sonar_counter'],
+                  evidence_retrieval: ['edgar', 'sonar_web'],
                 };
                 (completeMap[data.step] || []).forEach(id => completeChip(id));
                 if (data.total_sources) setPipelineStats(prev => ({ ...prev, sources: data.total_sources }));
                 break;
               }
               case 'evidence_found':
-                bumpApiCalls(data.tier === 'academic' ? 'Semantic Scholar' : 'Sonar');
+                bumpApiCalls(data.tier === 'sec_filing' ? 'EDGAR' : 'Sonar');
                 setPipelineStats(prev => ({ ...prev, sources: prev.sources + 1 }));
                 break;
               case 'verification_complete':
@@ -544,9 +576,9 @@ const SynapsePage: React.FC = () => {
             switch (type) {
               case 'step_start': {
                 const badgeMap: Record<string, string> = {
-                  decomposition: 'claude', evaluation: 'claude',
+                  decomposition: 'claude', evaluation: 'claude', contradictions: 'claude',
                   synthesis: 'claude', correction: 'claude', provenance: 'sonar',
-                  evidence_retrieval: 'sscholar',
+                  evidence_retrieval: 'edgar',
                 };
                 addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, badgeMap[data.step]);
                 break;
@@ -555,13 +587,16 @@ const SynapsePage: React.FC = () => {
                 addTrace(`Sub-claim: "${data.text}"`, 'info', 1);
                 break;
               case 'search_start':
-                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'sscholar');
+                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'edgar');
                 break;
               case 'evidence_found': {
-                const evBadge = data.tier === 'academic' ? 'sscholar' : data.tier === 'counter' ? 'sonar' : 'sonar';
+                const evBadge = data.tier === 'sec_filing' ? 'edgar' : data.tier === 'counter' ? 'claude' : 'sonar';
                 addTrace(`Found: ${data.title?.slice(0, 50)} [${data.tier}]`, 'info', 2, evBadge);
                 break;
               }
+              case 'contradiction_detected':
+                addTrace(`Contradiction: ${data.explanation?.slice(0, 80)}...`, 'info', 1, 'claude');
+                break;
               case 'evidence_scored':
                 addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2, 'claude');
                 break;
@@ -707,7 +742,7 @@ const SynapsePage: React.FC = () => {
           <div>
             <div style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px' }}>SYNAPSE</div>
             <div style={{ fontSize: '9px', fontWeight: 600, color: '#666666', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
-              Every claim, interrogated
+              Financial AI Verification Engine
             </div>
           </div>
         </div>
@@ -759,7 +794,7 @@ const SynapsePage: React.FC = () => {
                   Don't trust. Verify.
                 </h1>
                 <p style={{ fontSize: '13px', color: '#666666', maxWidth: '520px', margin: '0 auto', marginBottom: '16px' }}>
-                  Multi-agent verification pipeline: atomic claim decomposition, evidence retrieval from Semantic Scholar & Perplexity Sonar, source quality scoring, verdict synthesis with confidence levels, and full provenance tracing — streamed live.
+                  Financial claim verification against SEC filings, earnings transcripts, and market data. Auditable, compliance-ready verification with cross-source contradiction detection — streamed live.
                 </p>
                 {/* Try these — subtle inline examples */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '600px', margin: '0 auto' }}>
@@ -780,63 +815,67 @@ const SynapsePage: React.FC = () => {
                   ))}
                 </div>
 
-                {/* ─── Live Tweet Ticker ─────────────────────────────── */}
-                {trendingTweets.length > 0 && (
+                {/* ─── Financial Claims Feed ─────────────────────────── */}
+                {financialClaims.length > 0 && (
                   <div style={{ marginTop: '24px', position: 'relative' }}>
                     <div style={{
                       width: '40px', height: '1px', background: '#222', margin: '0 auto 16px',
                     }} />
                     <div style={{ fontSize: '9px', fontWeight: 700, color: '#333', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s ease-in-out infinite' }} />
-                      Live from 𝕏
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d4af37', animation: 'pulse 2s ease-in-out infinite' }} />
+                      Recent Financial Claims
                     </div>
                     <div className="scroll-ticker-wrap" style={{ position: 'relative', overflow: 'hidden', maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)' }}>
                       <div style={{
                         display: 'flex', gap: '12px', width: 'max-content',
-                        animation: `scroll-ticker ${Math.max(40, trendingTweets.length * 5)}s linear infinite`,
+                        animation: `scroll-ticker ${Math.max(40, financialClaims.length * 6)}s linear infinite`,
                       }}>
-                        {[...trendingTweets, ...trendingTweets].map((tweet, i) => (
-                          <button key={`${tweet.id}-${i}`}
-                            onClick={() => { setInputMode('url'); setInputValue(tweet.url); }}
-                            style={{
-                              flexShrink: 0, width: '300px', padding: '12px 14px',
-                              borderRadius: '10px', border: '1px solid #141414',
-                              background: '#080808',
-                              cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-                              display: 'flex', flexDirection: 'column', gap: '8px',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.background = '#0c0c0c'; }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = '#141414'; e.currentTarget.style.background = '#080808'; }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {tweet.avatar ? (
-                                <img src={tweet.avatar} alt="" style={{ width: '22px', height: '22px', borderRadius: '50%' }} />
-                              ) : (
-                                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#1a1a1a' }} />
-                              )}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#bbb' }}>{tweet.author}</span>
-                                <span style={{ fontSize: '10px', color: '#3a3a3a', marginLeft: '4px' }}>{tweet.handle}</span>
+                        {[...financialClaims, ...financialClaims].map((fc, i) => {
+                          const typeColors: Record<string, string> = {
+                            financial_metric: '#4ade80', transaction: '#6b9bd2', regulatory: '#d4af37', guidance: '#fbbf24',
+                          };
+                          return (
+                            <button key={`${fc.id}-${i}`}
+                              onClick={() => { setInputMode('text'); setInputValue(fc.text); }}
+                              style={{
+                                flexShrink: 0, width: '300px', padding: '12px 14px',
+                                borderRadius: '10px', border: '1px solid #141414',
+                                background: '#080808',
+                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                                display: 'flex', flexDirection: 'column', gap: '8px',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.background = '#0c0c0c'; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#141414'; e.currentTarget.style.background = '#080808'; }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '3px',
+                                  backgroundColor: `${typeColors[fc.type] || '#888'}20`,
+                                  color: typeColors[fc.type] || '#888',
+                                  border: `1px solid ${typeColors[fc.type] || '#888'}40`,
+                                  textTransform: 'uppercase', letterSpacing: '0.3px',
+                                }}>{fc.company}</span>
+                                <span style={{ fontSize: '10px', color: '#3a3a3a', marginLeft: 'auto' }}>{fc.source}</span>
                               </div>
-                              <span style={{ fontSize: '11px', color: '#1d9bf0' }}>𝕏</span>
-                            </div>
-                            <div style={{
-                              fontSize: '12px', color: '#888', lineHeight: 1.5,
-                              overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any,
-                            }}>
-                              {tweet.text}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '10px', color: '#333' }}>
-                              <span>❤️ {tweet.likes > 999 ? `${(tweet.likes / 1000).toFixed(1)}k` : tweet.likes}</span>
-                              <span>🔁 {tweet.retweets > 999 ? `${(tweet.retweets / 1000).toFixed(1)}k` : tweet.retweets}</span>
-                              <div style={{ flex: 1 }} />
-                              <span style={{
-                                fontSize: '9px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase',
-                                padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(34,197,94,0.15)', background: 'rgba(34,197,94,0.04)',
-                              }}>Verify →</span>
-                            </div>
-                          </button>
-                        ))}
+                              <div style={{
+                                fontSize: '12px', color: '#888', lineHeight: 1.5,
+                                overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any,
+                              }}>
+                                {fc.text}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', color: '#333' }}>
+                                <span style={{
+                                  fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase',
+                                }}>{fc.type?.replace('_', ' ')}</span>
+                                <div style={{ flex: 1 }} />
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 700, color: '#d4af37', textTransform: 'uppercase',
+                                  padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(212,175,55,0.15)', background: 'rgba(212,175,55,0.04)',
+                                }}>Verify →</span>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -949,6 +988,39 @@ const SynapsePage: React.FC = () => {
                 display: 'flex', alignItems: 'center', gap: '4px',
               }}>
               📤 Share Report
+            </button>
+            <button onClick={async () => {
+              try {
+                const reportData = {
+                  title: ingestedTitle || 'Verification Report',
+                  url: inputValue.startsWith('http') ? inputValue : undefined,
+                  claims: claims.map(c => ({
+                    id: c.id, original: c.original, normalized: c.normalized,
+                    type: c.type, status: c.status, verification: c.verification,
+                  })),
+                  analyzed_at: new Date().toISOString(),
+                };
+                const resp = await fetch(`${API_BASE}/api/export-audit-log`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(reportData),
+                });
+                if (resp.ok) {
+                  const audit = await resp.json();
+                  const blob = new Blob([JSON.stringify(audit, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `synapse-audit-${new Date().toISOString().slice(0,10)}.json`;
+                  a.click(); URL.revokeObjectURL(url);
+                }
+              } catch {}
+            }}
+              style={{
+                padding: '5px 14px', borderRadius: '5px', border: '1px solid #1a5a1a',
+                backgroundColor: '#0a2a0a', color: '#4ade80',
+                fontSize: '10px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+              📋 Export Audit Log
             </button>
             {reportId && (
               <button onClick={() => {
@@ -1094,9 +1166,21 @@ const SynapsePage: React.FC = () => {
                     {claim.status === 'verifying' && (
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ffffff', animation: 'pulse 1.2s ease-in-out infinite', flexShrink: 0 }} />
                     )}
-                    <span style={{ fontSize: '9px', fontWeight: 600, color: '#555555', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      {claim.type}
-                    </span>
+                    {(() => {
+                      const typeConfig: Record<string, { color: string; label: string }> = {
+                        financial_metric: { color: '#4ade80', label: 'Metric' },
+                        valuation: { color: '#a78bfa', label: 'Valuation' },
+                        transaction: { color: '#6b9bd2', label: 'Transaction' },
+                        regulatory: { color: '#d4af37', label: 'Regulatory' },
+                        guidance: { color: '#fbbf24', label: 'Guidance' },
+                      };
+                      const tc = typeConfig[claim.type] || { color: '#555555', label: claim.type };
+                      return (
+                        <span style={{ fontSize: '8px', fontWeight: 700, color: tc.color, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '1px 5px', borderRadius: '3px', backgroundColor: `${tc.color}15`, border: `1px solid ${tc.color}30` }}>
+                          {tc.label}
+                        </span>
+                      );
+                    })()}
                     {claim.verification?.overallVerdict && (
                       <span style={{
                         marginLeft: 'auto', fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '3px',
@@ -1210,7 +1294,7 @@ const SynapsePage: React.FC = () => {
                 })() : (
                   /* Pipeline progress when still verifying */
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    {['decomposition', 'evidence_retrieval', 'evaluation', 'synthesis', 'provenance', 'correction'].map(step => {
+                    {['decomposition', 'evidence_retrieval', 'evaluation', 'contradictions', 'synthesis', 'provenance', 'correction'].map(step => {
                       const isDone = v.completedSteps.includes(step);
                       const isCurrent = v.currentStep === step && !isDone;
                       return (
@@ -1308,6 +1392,7 @@ const SynapsePage: React.FC = () => {
                 {([
                   { key: 'subclaims' as const, label: 'Sub-Claims', icon: '🔬', count: v.subclaims.length },
                   { key: 'evidence' as const, label: 'Evidence', icon: '📄', count: v.evidence.length },
+                  { key: 'contradictions' as const, label: 'Contradictions', icon: '⚡', count: v.contradictions.length },
                   { key: 'provenance' as const, label: 'Provenance', icon: '🔗', count: v.provenanceNodes.length },
                   { key: 'correction' as const, label: 'Correction', icon: '✏️', count: v.correctedClaim ? 1 : 0 },
                 ]).map(tab => {
@@ -1459,7 +1544,50 @@ const SynapsePage: React.FC = () => {
                                   <div style={{ fontSize: '11px', color: '#888888', lineHeight: 1.5 }}>
                                     {ev.snippet?.slice(0, 180)}{(ev.snippet?.length || 0) > 180 ? '...' : ''}
                                   </div>
+                                  {/* XBRL Ground Truth Comparison */}
+                                  {ev.xbrl_match && (
+                                    <div style={{
+                                      marginTop: '8px', padding: '8px 10px', borderRadius: '6px',
+                                      backgroundColor: ev.xbrl_match === 'exact' ? '#0a1a0a' : ev.xbrl_match === 'close' ? '#1a1500' : '#1a0a0a',
+                                      border: `1px solid ${ev.xbrl_match === 'exact' ? '#1a3a1a' : ev.xbrl_match === 'close' ? '#3a3000' : '#3a1a1a'}`,
+                                    }}>
+                                      <div style={{ fontSize: '9px', fontWeight: 800, color: '#d4af37', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        ⚖️ XBRL Ground Truth
+                                        <span style={{
+                                          fontSize: '8px', padding: '1px 5px', borderRadius: '3px',
+                                          backgroundColor: ev.xbrl_match === 'exact' ? '#4ade8020' : ev.xbrl_match === 'close' ? '#fbbf2420' : '#f8717120',
+                                          color: ev.xbrl_match === 'exact' ? '#4ade80' : ev.xbrl_match === 'close' ? '#fbbf24' : '#f87171',
+                                          border: `1px solid ${ev.xbrl_match === 'exact' ? '#4ade8040' : ev.xbrl_match === 'close' ? '#fbbf2440' : '#f8717140'}`,
+                                        }}>{ev.xbrl_match?.toUpperCase()} MATCH</span>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>
+                                        {ev.xbrl_claimed && (
+                                          <div>
+                                            <span style={{ color: '#888', fontSize: '9px', fontWeight: 600 }}>CLAIMED: </span>
+                                            <span style={{ color: '#fff', fontWeight: 700 }}>{ev.xbrl_claimed}</span>
+                                          </div>
+                                        )}
+                                        {ev.xbrl_actual && (
+                                          <div>
+                                            <span style={{ color: '#888', fontSize: '9px', fontWeight: 600 }}>ACTUAL: </span>
+                                            <span style={{ color: '#d4af37', fontWeight: 700 }}>{ev.xbrl_actual}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      {ev.xbrl_computation && (
+                                        <div style={{ fontSize: '10px', color: '#888', marginTop: '4px', fontFamily: "'JetBrains Mono', monospace" }}>
+                                          {ev.xbrl_computation}
+                                        </div>
+                                      )}
+                                      {ev.xbrl_discrepancy && ev.xbrl_match !== 'exact' && (
+                                        <div style={{ fontSize: '10px', color: ev.xbrl_match === 'close' ? '#fbbf24' : '#f87171', marginTop: '4px' }}>
+                                          {ev.xbrl_discrepancy}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: '#555555' }}>
+                                    {ev.verified_against && <span style={{ color: '#d4af37', fontWeight: 600 }}>{ev.verified_against}</span>}
                                     {ev.year && <span>{ev.year}</span>}
                                     {ev.citations != null && <span>{ev.citations} cit.</span>}
                                   </div>
@@ -1495,6 +1623,72 @@ const SynapsePage: React.FC = () => {
                   </div>
                 )}
 
+                {/* ── Contradictions Tab ──────────────────────────────── */}
+                {activeTab === 'contradictions' && (
+                  <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                    {v.contradictions.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {v.contradictions.map((c, i) => {
+                          const sevColors: Record<string, { bg: string; border: string; text: string }> = {
+                            low: { bg: '#1a1500', border: '#3a3000', text: '#fbbf24' },
+                            medium: { bg: '#1a1000', border: '#3a2000', text: '#fb923c' },
+                            high: { bg: '#1a0a0a', border: '#3a1a1a', text: '#f87171' },
+                          };
+                          const sev = sevColors[c.severity] || sevColors.medium;
+                          return (
+                            <div key={c.id || i} style={{
+                              padding: '16px', borderRadius: '10px',
+                              border: `1px solid ${sev.border}`, backgroundColor: sev.bg,
+                              animation: `slideIn 0.3s ease ${i * 0.08}s both`,
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '3px',
+                                  backgroundColor: `${sev.text}20`, color: sev.text, border: `1px solid ${sev.text}40`,
+                                  textTransform: 'uppercase', letterSpacing: '0.5px',
+                                }}>{c.severity} severity</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+                                {/* Source A */}
+                                <div style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a' }}>
+                                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#d4af37', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                    {c.source_a?.type || 'Source A'}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: '#888', marginBottom: '4px' }}>{c.source_a?.name}</div>
+                                  <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.5, fontStyle: 'italic' }}>
+                                    "{c.source_a?.text}"
+                                  </div>
+                                </div>
+                                {/* VS divider */}
+                                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                                  <span style={{ fontSize: '10px', fontWeight: 800, color: sev.text }}>VS</span>
+                                </div>
+                                {/* Source B */}
+                                <div style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a' }}>
+                                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#6b9bd2', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                    {c.source_b?.type || 'Source B'}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: '#888', marginBottom: '4px' }}>{c.source_b?.name}</div>
+                                  <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.5, fontStyle: 'italic' }}>
+                                    "{c.source_b?.text}"
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#aaa', lineHeight: 1.5, paddingTop: '10px', borderTop: `1px solid ${sev.border}` }}>
+                                {c.explanation}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#555555', fontSize: '12px' }}>
+                        {selectedClaim.status === 'verifying' ? 'Checking for contradictions...' : 'No contradictions detected between sources'}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* ── Provenance Tab (horizontal tree) ────────────────── */}
                 {activeTab === 'provenance' && (
                   <div style={{ animation: 'fadeIn 0.2s ease' }}>
@@ -1518,6 +1712,7 @@ const SynapsePage: React.FC = () => {
                             const nextColor = nextNode ? (MUTATION_COLORS[nextNode.mutation_severity] || '#94a3b8') : mutColor;
                             const sourceIcons: Record<string, string> = {
                               study: '📄', journalist: '📰', podcast: '🎙️', social: '📱', blog: '💻', claim: '💬',
+                              sec_filing: '⚖️', earnings_call: '🎙️', press_release: '📰', analyst_report: '📊', market_data: '📈',
                             };
                             return (
                               <React.Fragment key={node.id}>
@@ -1702,7 +1897,7 @@ const SynapsePage: React.FC = () => {
 
               {/* Ghost tabs */}
               <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid #111111', backgroundColor: '#050505' }}>
-                {['Sub-Claims', 'Evidence', 'Provenance', 'Correction'].map((t, i) => (
+                {['Sub-Claims', 'Evidence', 'Contradictions', 'Provenance', 'Correction'].map((t, i) => (
                   <div key={t} style={{
                     flex: 1, padding: '10px 8px', textAlign: 'center',
                     borderBottom: i === 2 ? '2px solid #1a1a1a' : '2px solid transparent',
@@ -1855,7 +2050,7 @@ const SynapsePage: React.FC = () => {
         {[
           { label: 'Claude Sonnet', color: '#e8c8a0' },
           { label: 'Perplexity Sonar', color: '#6bccc8' },
-          { label: 'Semantic Scholar', color: '#6b9bd2' },
+          { label: 'SEC EDGAR', color: '#d4af37' },
           { label: 'Deepgram', color: '#a78bfa' },
         ].map(s => (
           <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
