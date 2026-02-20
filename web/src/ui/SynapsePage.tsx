@@ -818,11 +818,11 @@ const SynapsePage: React.FC = () => {
   // ─── Verify All Claims ───────────────────────────────────────────────
 
   const verifyAll = useCallback(async () => {
-    for (const claim of claims) {
-      if (claim.status === 'pending') {
-        await verifyClaim(claim.id);
-      }
-    }
+    await Promise.all(
+      claims
+        .filter(c => c.status === 'pending')
+        .map(c => verifyClaim(c.id))
+    );
   }, [claims, verifyClaim]);
 
   // ─── Audio Upload ────────────────────────────────────────────────────
@@ -1112,18 +1112,6 @@ const SynapsePage: React.FC = () => {
                     >
                       Upload PDF / PPTX / DOCX
                     </button>
-                    <button onClick={() => fileInputRef.current?.click()}
-                      style={{
-                        padding: '5px 12px', borderRadius: '2px',
-                        border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#444',
-                        fontSize: '10px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
-                        letterSpacing: '0.3px',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#444'; }}
-                    >
-                      Upload Audio
-                    </button>
                   </div>
                 </div>
 
@@ -1233,23 +1221,10 @@ const SynapsePage: React.FC = () => {
                       onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#aaa'; }}
                       onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#555'; }}
                     >File</button>
-                    <button onClick={() => fileInputRef.current?.click()}
-                      style={{
-                        flex: 1, padding: '6px 10px', borderRadius: '0 0 2px 0',
-                        border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#555555',
-                        fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#aaa'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#555'; }}
-                    >Audio</button>
                   </div>
                 </div>
               </div>
             )}
-            <input ref={fileInputRef} type="file" accept="audio/*,video/*,.mp3,.wav,.mp4,.m4a,.webm"
-              style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }}
-            />
             <input ref={docInputRef} type="file" accept=".pdf,.pptx,.docx,.doc"
               style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f); e.target.value = ''; }}
