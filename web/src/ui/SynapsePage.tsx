@@ -1,5 +1,4 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 // ─── API Base URL (Railway backend for real SSE streaming) ─────────────────
 // Local dev: empty string (Vite proxy handles /api → localhost:4000)
@@ -283,7 +282,6 @@ const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
 // ─── Main Component ───────────────────────────────────────────────────────
 
 const SynapsePage: React.FC = () => {
-  const navigate = useNavigate();
   // Input state
   const [inputValue, setInputValue] = useState('');
   const [inputMode, setInputMode] = useState<'url' | 'text'>('url');
@@ -962,15 +960,6 @@ const SynapsePage: React.FC = () => {
           </div>
           <div style={{ marginLeft: '12px', padding: '2px 8px', borderRadius: '2px', border: '1px solid #222', background: 'transparent', fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '0.8px' }}>
             v2.0
-          </div>
-          {/* Mode toggle */}
-          <div style={{ display: 'flex', marginLeft: '12px', borderRadius: '6px', border: '1px solid #1a1a1a', overflow: 'hidden' }}>
-            <button style={{ padding: '4px 12px', border: 'none', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backgroundColor: '#111', color: '#fff' }}>
-              Claim Verification
-            </button>
-            <button onClick={() => navigate('/audit')} style={{ padding: '4px 12px', border: 'none', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backgroundColor: 'transparent', color: '#555' }}>
-              Document Audit
-            </button>
           </div>
         </div>
 
@@ -1761,6 +1750,164 @@ const SynapsePage: React.FC = () => {
                         <span style={{ color: '#333333' }}>·</span>
                         <span>{(pipelineStats.durationMs / 1000).toFixed(1)}s</span>
                       </>
+                    )}
+                  </div>
+                )}
+
+                {/* ═══ Action Bar ════════════════════════════════════════ */}
+                {v.completedSteps.includes('correction') && (
+                  <div style={{
+                    marginTop: '10px', padding: '10px 14px', borderRadius: '8px',
+                    border: '1px solid #1a1a1a', backgroundColor: '#050505',
+                    display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center',
+                    animation: 'fadeIn 0.4s ease',
+                  }}>
+                    <span style={{ fontSize: '9px', fontWeight: 700, color: '#333', textTransform: 'uppercase', letterSpacing: '0.5px', marginRight: '4px' }}>Actions</span>
+
+                    {/* Copy report */}
+                    <button
+                      onClick={() => {
+                        const verdict = v.overallVerdict;
+                        const lines = [
+                          `SYNAPSE VERIFICATION REPORT`,
+                          `Claim: ${selectedClaim?.original || ''}`,
+                          `Verdict: ${verdict?.verdict?.toUpperCase().replace('_', ' ') || 'UNKNOWN'} (${verdict?.confidence || '?'} confidence)`,
+                          `Summary: ${verdict?.summary || ''}`,
+                          verdict?.reconciled ? `Final Assessment: ${v.reconciliation?.explanation || ''}` : '',
+                          ``,
+                          `Sub-claims: ${v.subclaims.length} · Evidence: ${v.evidence.length} · Contradictions: ${v.contradictions.length}`,
+                          v.correctedClaim?.corrected ? `\nCorrected Claim: ${v.correctedClaim.corrected}` : '',
+                          v.riskSignals?.red_flags?.length ? `\nRed Flags:\n${v.riskSignals.red_flags.map(f => `• ${f}`).join('\n')}` : '',
+                          v.riskSignals?.recommended_actions?.length ? `\nRecommended Actions:\n${v.riskSignals.recommended_actions.map((a, i) => `${i + 1}. ${a}`).join('\n')}` : '',
+                        ].filter(Boolean).join('\n');
+                        navigator.clipboard.writeText(lines);
+                      }}
+                      style={{
+                        padding: '4px 12px', borderRadius: '5px', border: '1px solid #222',
+                        backgroundColor: 'transparent', color: '#888', fontSize: '10px', fontWeight: 600,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#444'; (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#222'; (e.currentTarget as HTMLButtonElement).style.color = '#888'; }}
+                    >
+                      📋 Copy Report
+                    </button>
+
+                    {/* Export JSON */}
+                    <button
+                      onClick={() => {
+                        const payload = {
+                          claim: selectedClaim?.original,
+                          verdict: v.overallVerdict,
+                          reconciliation: v.reconciliation,
+                          subclaims: v.subclaims,
+                          evidence: v.evidence,
+                          contradictions: v.contradictions,
+                          consistencyIssues: v.consistencyIssues,
+                          correctedClaim: v.correctedClaim,
+                          riskSignals: v.riskSignals,
+                          materiality: v.materiality,
+                          exportedAt: new Date().toISOString(),
+                        };
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url; a.download = 'synapse-verification.json'; a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      style={{
+                        padding: '4px 12px', borderRadius: '5px', border: '1px solid #222',
+                        backgroundColor: 'transparent', color: '#888', fontSize: '10px', fontWeight: 600,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#444'; (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#222'; (e.currentTarget as HTMLButtonElement).style.color = '#888'; }}
+                    >
+                      ↓ Export JSON
+                    </button>
+
+                    {/* Dig deeper */}
+                    {v.overallVerdict?.verdict !== 'supported' && (
+                      <button
+                        onClick={() => {
+                          const topContradiction = v.contradictions[0];
+                          const topIssue = v.consistencyIssues[0];
+                          const hint = topContradiction
+                            ? `Dig deeper: "${topContradiction.explanation?.slice(0, 120)}"`
+                            : topIssue
+                            ? `Investigate: "${topIssue.description?.slice(0, 120)}"`
+                            : `Verify: "${selectedClaim?.original?.slice(0, 120)}"`;
+                          navigator.clipboard.writeText(hint);
+                        }}
+                        style={{
+                          padding: '4px 12px', borderRadius: '5px', border: '1px solid #222',
+                          backgroundColor: 'transparent', color: '#888', fontSize: '10px', fontWeight: 600,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#444'; (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#222'; (e.currentTarget as HTMLButtonElement).style.color = '#888'; }}
+                      >
+                        🔍 Copy Follow-up
+                      </button>
+                    )}
+
+                    {/* Flag for review */}
+                    {(v.overallVerdict?.verdict === 'contradicted' || v.overallVerdict?.verdict === 'exaggerated' || (v.contradictions.length > 0)) && (
+                      <button
+                        onClick={() => {
+                          const flag = [
+                            `[FLAGGED FOR REVIEW]`,
+                            `Claim: ${selectedClaim?.original}`,
+                            `Verdict: ${v.overallVerdict?.verdict}`,
+                            `Reason: ${v.contradictions[0]?.explanation || v.overallVerdict?.summary}`,
+                            `Flagged at: ${new Date().toLocaleString()}`,
+                          ].join('\n');
+                          navigator.clipboard.writeText(flag);
+                        }}
+                        style={{
+                          padding: '4px 12px', borderRadius: '5px', border: '1px solid #3a1a1a',
+                          backgroundColor: 'transparent', color: '#f87171', fontSize: '10px', fontWeight: 600,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#1a0808'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
+                      >
+                        🚩 Flag for Review
+                      </button>
+                    )}
+
+                    {/* Generate rebuttal */}
+                    {v.correctedClaim?.corrected && (
+                      <button
+                        onClick={() => {
+                          const rebuttal = [
+                            `REBUTTAL`,
+                            `Original claim: "${selectedClaim?.original}"`,
+                            ``,
+                            `This claim is ${v.reconciliation?.accuracy_level?.replace('_', ' ') || v.overallVerdict?.verdict}.`,
+                            ``,
+                            v.reconciliation?.explanation || v.overallVerdict?.summary || '',
+                            ``,
+                            `More accurate version: "${v.correctedClaim?.corrected}"`,
+                            v.correctedClaim?.caveats?.length ? `\nCaveats:\n${v.correctedClaim.caveats.map((c: string) => `• ${c}`).join('\n')}` : '',
+                          ].filter(Boolean).join('\n');
+                          navigator.clipboard.writeText(rebuttal);
+                        }}
+                        style={{
+                          padding: '4px 12px', borderRadius: '5px', border: '1px solid #1a2a1a',
+                          backgroundColor: 'transparent', color: '#4ade80', fontSize: '10px', fontWeight: 600,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#081208'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
+                      >
+                        ✍ Copy Rebuttal
+                      </button>
                     )}
                   </div>
                 )}
