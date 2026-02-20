@@ -1346,8 +1346,6 @@ export default function App(): JSX.Element {
           </div>
         </div>
       </footer>
-        </div>
-      </div>
 
       {/* Floating Knowledge Graph Button */}
       <button
@@ -1372,6 +1370,8 @@ export default function App(): JSX.Element {
         graphData={knowledgeGraph}
         onRefresh={loadKnowledgeGraph}
       />
+        </div>
+      </div>
   );
 }
 

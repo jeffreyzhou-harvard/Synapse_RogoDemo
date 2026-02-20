@@ -4230,6 +4230,7 @@ class ClaimItem(BaseModel):
     original: str
     normalized: str
     type: str
+    location: str = ""
 
 class ExtractClaimsResponse(BaseModel):
     claims: List[ClaimItem]
@@ -4292,6 +4293,108 @@ async def api_ingest_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
 
+@app.post("/api/ingest-file", response_model=IngestResponse)
+async def api_ingest_file(file: UploadFile = File(...)):
+    """Ingest a document file (PDF, PPTX, DOCX) — extract text and return it."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    file_bytes = await file.read()
+
+    if ext == "pdf":
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            pages = []
+            for page in doc:
+                pages.append(page.get_text())
+            doc.close()
+            text = "\n\n".join(pages).strip()
+            if not text:
+                raise HTTPException(status_code=400, detail="PDF appears to contain no extractable text (may be scanned/image-only)")
+            title = file.filename
+            # Try to get title from PDF metadata
+            meta = fitz.open(stream=file_bytes, filetype="pdf").metadata
+            if meta and meta.get("title"):
+                title = meta["title"]
+            return IngestResponse(title=title, text=text, source_type="pdf")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF parsing failed: {e}")
+
+    elif ext == "pptx":
+        try:
+            from pptx import Presentation
+            prs = Presentation(io.BytesIO(file_bytes))
+            slides_text = []
+            for i, slide in enumerate(prs.slides, 1):
+                slide_parts = [f"--- Slide {i} ---"]
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for para in shape.text_frame.paragraphs:
+                            t = para.text.strip()
+                            if t:
+                                slide_parts.append(t)
+                    if shape.has_table:
+                        table = shape.table
+                        for row in table.rows:
+                            row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                            if row_text.strip(" |"):
+                                slide_parts.append(row_text)
+                # Also grab speaker notes
+                if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                    notes = slide.notes_slide.notes_text_frame.text.strip()
+                    if notes:
+                        slide_parts.append(f"[Speaker Notes] {notes}")
+                slides_text.append("\n".join(slide_parts))
+            text = "\n\n".join(slides_text).strip()
+            if not text or text.replace("-", "").replace("Slide", "").strip() == "":
+                raise HTTPException(status_code=400, detail="PowerPoint appears to contain no extractable text")
+            title = file.filename
+            if prs.core_properties and prs.core_properties.title:
+                title = prs.core_properties.title
+            return IngestResponse(title=title, text=text, source_type="pptx")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PPTX parsing failed: {e}")
+
+    elif ext in ("docx", "doc"):
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(file_bytes))
+            paragraphs = []
+            for para in doc.paragraphs:
+                t = para.text.strip()
+                if t:
+                    paragraphs.append(t)
+            # Also extract tables
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                    if row_text.strip(" |"):
+                        paragraphs.append(row_text)
+            text = "\n\n".join(paragraphs).strip()
+            if not text:
+                raise HTTPException(status_code=400, detail="Word document appears to contain no extractable text")
+            title = file.filename
+            if doc.core_properties and doc.core_properties.title:
+                title = doc.core_properties.title
+            return IngestResponse(title=title, text=text, source_type="docx")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DOCX parsing failed: {e}")
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: .{ext}. Supported: .pdf, .pptx, .docx"
+        )
+
+
 @app.post("/api/extract-claims", response_model=ExtractClaimsResponse)
 def api_extract_claims(req: ExtractClaimsRequest):
     """Extract verifiable factual claims from text."""
@@ -4305,6 +4408,7 @@ def api_extract_claims(req: ExtractClaimsRequest):
             original=c.get("original", ""),
             normalized=c.get("normalized", c.get("original", "")),
             type=c.get("type", "categorical"),
+            location=c.get("location", ""),
         ))
     return ExtractClaimsResponse(claims=claims)
 

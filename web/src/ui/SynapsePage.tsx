@@ -12,8 +12,16 @@ interface ExtractedClaim {
   original: string;
   normalized: string;
   type: string;
+  location?: string;
   status: 'pending' | 'verifying' | 'done' | 'error';
   verification?: VerificationState;
+}
+
+interface ConfidenceBreakdown {
+  source_count: { value: number; score: number; weight: number };
+  tier_quality: { value: number; score: number; weight: number; has_sec_filing?: boolean };
+  agreement_ratio: { value: number; score: number; weight: number; supporting: number; opposing: number; total_scored: number };
+  recency: { value: number | null; score: number; weight: number };
 }
 
 interface SubClaim {
@@ -22,6 +30,8 @@ interface SubClaim {
   type: string;
   verdict?: string;
   confidence?: string;
+  confidence_score?: number;
+  confidence_breakdown?: ConfidenceBreakdown;
   summary?: string;
 }
 
@@ -80,11 +90,111 @@ interface CorrectedClaim {
   caveats: string[];
 }
 
+interface ConsistencyIssue {
+  id: string;
+  type: string;
+  severity: 'low' | 'medium' | 'high';
+  sources_involved: string[];
+  description: string;
+  implication: string;
+}
+
+interface PlausibilityAssessment {
+  is_forward_looking: boolean;
+  projection: {
+    target_metric: string;
+    target_value: string;
+    target_date: string;
+    implied_growth_rate: string;
+  };
+  current_trajectory: {
+    current_value: string;
+    trend: string;
+    historical_growth_rate: string;
+  };
+  peer_comparison?: {
+    industry_median: string;
+    best_in_class: string;
+    is_outlier: boolean;
+    outlier_explanation: string;
+  };
+  plausibility_score: number;
+  plausibility_level: string;
+  assessment: string;
+  key_risks: string[];
+  key_assumptions: string[];
+}
+
+interface EntityResolution {
+  entities: { canonical_name: string; ticker: string; type: string; aliases: string[] }[];
+  resolutions: { original_text: string; resolved_to: string; context: string }[];
+  ambiguities: string[];
+}
+
+interface Normalization {
+  normalizations: {
+    subclaim_id: string;
+    original_expression: string;
+    normalized_value: string;
+    unit: string;
+    period: string;
+    accounting_basis: string;
+    precision: string;
+    flags: string[];
+  }[];
+  comparison_warnings: string[];
+}
+
+interface MaterialityAssessment {
+  materiality_level: string;
+  materiality_score: number;
+  category: string;
+  error_magnitude: string;
+  impact_assessment: string;
+  attention_flag: boolean;
+}
+
+interface AuthorityConflict {
+  id: string;
+  higher_authority: { id: string; tier: string; authority_label: string; rank: number; position: string };
+  lower_authority: { id: string; tier: string; authority_label: string; rank: number; position: string };
+  severity: string;
+  implication: string;
+}
+
+interface RiskSignals {
+  risk_level: string;
+  risk_score: number;
+  headline: string;
+  patterns_detected: { pattern: string; evidence: string; frequency: string }[];
+  red_flags: string[];
+  recommended_actions: string[];
+  risk_narrative: string;
+}
+
+interface Reconciliation {
+  core_claim_true: boolean | null;
+  misleading: boolean | null;
+  accuracy_level: string;
+  reconciled_verdict: string;
+  override_mechanical: boolean;
+  explanation: string;
+  detail_added: string;
+}
+
 interface VerificationState {
   subclaims: SubClaim[];
   evidence: EvidenceItem[];
   contradictions: ContradictionItem[];
-  overallVerdict?: { verdict: string; confidence: string; summary: string; detail?: string; verified_against?: string };
+  consistencyIssues: ConsistencyIssue[];
+  plausibility?: PlausibilityAssessment;
+  entityResolution?: EntityResolution;
+  normalization?: Normalization;
+  materiality?: MaterialityAssessment;
+  authorityConflicts: AuthorityConflict[];
+  riskSignals?: RiskSignals;
+  reconciliation?: Reconciliation;
+  overallVerdict?: { verdict: string; confidence: string; confidence_score?: number; confidence_breakdown?: ConfidenceBreakdown; summary: string; detail?: string; verified_against?: string; reconciled?: boolean };
   provenanceNodes: ProvenanceNode[];
   provenanceEdges: ProvenanceEdge[];
   provenanceAnalysis?: string;
@@ -125,12 +235,18 @@ const MUTATION_COLORS: Record<string, string> = {
 
 const STEP_ICONS: Record<string, string> = {
   decomposition: '🔬',
+  entity_resolution: '🏢',
+  normalization: '📐',
   evidence_retrieval: '🔍',
   evaluation: '⚖️',
   contradictions: '⚡',
+  consistency: '🔄',
+  plausibility: '📊',
   synthesis: '🧠',
   provenance: '🔗',
   correction: '✏️',
+  reconciliation: '⚖️',
+  risk_signals: '🚨',
 };
 
 // ─── Agent Orchestration ──────────────────────────────────────────────────
@@ -145,22 +261,22 @@ interface AgentChip {
 }
 
 const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
-  claude:    { color: '#e8c8a0', label: 'Claude' },
-  edgar:     { color: '#d4af37', label: 'EDGAR' },
-  sonar:     { color: '#6bccc8', label: 'Sonar' },
-  deepgram:  { color: '#a78bfa', label: 'Deepgram' },
+  reasoning:   { color: '#e8c8a0', label: 'Reasoning' },
+  filings:     { color: '#d4af37', label: 'Filings' },
+  search:      { color: '#6bccc8', label: 'Search' },
+  transcribe:  { color: '#a78bfa', label: 'Transcribe' },
 };
 
 const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
-  { id: 'extract',       service: 'claude',  task: 'Extract',        label: 'Claude · Extract Claims',      color: '#e8c8a0' },
-  { id: 'decompose',     service: 'claude',  task: 'Decompose',      label: 'Claude · Decompose',           color: '#e8c8a0' },
-  { id: 'edgar',         service: 'edgar',   task: 'SEC Filings',    label: 'EDGAR · SEC Filings',          color: '#d4af37' },
-  { id: 'sonar_web',     service: 'sonar',   task: 'Earnings/News',  label: 'Sonar · Earnings & News',      color: '#6bccc8' },
-  { id: 'sonar_counter', service: 'sonar',   task: 'Counter',        label: 'Claude · Contradictions',      color: '#e8c8a0' },
-  { id: 'evaluate',      service: 'claude',  task: 'Evaluate',       label: 'Claude · Evaluate',            color: '#e8c8a0' },
-  { id: 'synthesize',    service: 'claude',  task: 'Synthesize',     label: 'Claude · Synthesize',          color: '#e8c8a0' },
-  { id: 'provenance',    service: 'sonar',   task: 'Provenance',     label: 'Sonar+Claude · Provenance',    color: '#6bccc8' },
-  { id: 'correct',       service: 'claude',  task: 'Correct',        label: 'Claude · Correct',             color: '#e8c8a0' },
+  { id: 'extract',       service: 'reasoning',  task: 'Extract',        label: 'Extract Claims',               color: '#e8c8a0' },
+  { id: 'decompose',     service: 'reasoning',  task: 'Decompose',      label: 'Decompose Claims',             color: '#e8c8a0' },
+  { id: 'edgar',         service: 'filings',    task: 'SEC Filings',    label: 'SEC Filing Retrieval',          color: '#d4af37' },
+  { id: 'sonar_web',     service: 'search',     task: 'Earnings/News',  label: 'Earnings & News Search',       color: '#6bccc8' },
+  { id: 'sonar_counter', service: 'reasoning',  task: 'Counter',        label: 'Contradiction Detection',      color: '#e8c8a0' },
+  { id: 'evaluate',      service: 'reasoning',  task: 'Evaluate',       label: 'Evidence Evaluation',           color: '#e8c8a0' },
+  { id: 'synthesize',    service: 'reasoning',  task: 'Synthesize',     label: 'Verdict Synthesis',             color: '#e8c8a0' },
+  { id: 'provenance',    service: 'search',     task: 'Provenance',     label: 'Provenance Tracing',            color: '#6bccc8' },
+  { id: 'correct',       service: 'reasoning',  task: 'Correct',        label: 'Claim Correction',              color: '#e8c8a0' },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -180,7 +296,7 @@ const SynapsePage: React.FC = () => {
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'contradictions' | 'provenance' | 'correction'>('subclaims');
+  const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'contradictions' | 'consistency' | 'plausibility' | 'provenance' | 'correction' | 'risk_signals'>('subclaims');
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [verdictExpanded, setVerdictExpanded] = useState(false);
@@ -197,8 +313,9 @@ const SynapsePage: React.FC = () => {
   const [traceLines, setTraceLines] = useState<{ text: string; type: string; indent: number; badge?: string }[]>([]);
   const traceRef = useRef<HTMLDivElement>(null);
 
-  // File input
+  // File inputs
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-ingest from ?url= query param (Chrome extension support)
   const autoIngestDone = useRef(false);
@@ -312,12 +429,12 @@ const SynapsePage: React.FC = () => {
   // ─── Preloaded Examples ────────────────────────────────────────────
 
   const PRELOADED_EXAMPLES = [
-    { icon: '🍎', claim: "Apple's gross margin was 46.2% in Q4 2024", verdict: 'supported', source: '10-K FY2024' },
-    { icon: '🎮', claim: 'Microsoft acquired Activision Blizzard for $68.7 billion', verdict: 'supported', source: '8-K Filing' },
-    { icon: '🚗', claim: 'Tesla delivered 1.81 million vehicles in 2023', verdict: 'supported', source: 'Earnings Call' },
-    { icon: '🏦', claim: "Goldman Sachs reported trading revenue of $6.6B in Q3 2024", verdict: 'partially_supported', source: '10-Q' },
-    { icon: '🟢', claim: "Nvidia's data center revenue grew 409% year-over-year", verdict: 'exaggerated', source: '10-K FY2024' },
-    { icon: '🏛️', claim: "JPMorgan's CET1 capital ratio was 15.0% as of Q4 2024", verdict: 'supported', source: '10-Q' },
+    { claim: "Apple's gross margin was 46.2% in Q4 2024", verdict: 'supported', source: '10-K FY2024', tag: 'VERIFIED' },
+    { claim: "Company X acquired Company Y in 2023 for $500M", verdict: 'contradicted', source: 'No 8-K found', tag: 'HALLUCINATION' },
+    { claim: "Nvidia's data center revenue grew 409% YoY", verdict: 'exaggerated', source: '10-K FY2024', tag: 'EXAGGERATED' },
+    { claim: "SaaS market will grow 15% per Gartner 2021", verdict: 'exaggerated', source: 'Revised 2024', tag: 'STALE' },
+    { claim: "Management expects profitability by Q3 2026", verdict: 'partially_supported', source: 'CIM vs 10-K', tag: 'UNVERIFIABLE' },
+    { claim: "95% customer retention (CIM) vs churn risk (10-K)", verdict: 'mixed', source: 'Cross-doc', tag: 'INCONSISTENT' },
   ];
 
   // ─── Ingest ──────────────────────────────────────────────────────────
@@ -372,8 +489,8 @@ const SynapsePage: React.FC = () => {
     setIsExtracting(true);
     // Initialize pipeline with just the extract chip active
     setAgentChips(INITIAL_PIPELINE.map(c => ({ ...c, status: c.id === 'extract' ? 'active' as const : 'pending' as const })));
-    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Sonar']), sources: 0, durationMs: 0 });
-    addTrace('Extracting claims...', 'step', 0, 'sonar');
+    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['search']), sources: 0, durationMs: 0 });
+    addTrace('Extracting claims...', 'step', 0, 'reasoning');
 
     try {
       const resp = await fetch(`${API_BASE}/api/extract-claims`, {
@@ -395,7 +512,7 @@ const SynapsePage: React.FC = () => {
       }));
       setClaims(extracted);
       completeChip('extract');
-      addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'sonar');
+      addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'reasoning');
       extracted.forEach((c, i) => {
         addTrace(`Claim ${i + 1}: "${c.original.slice(0, 80)}${c.original.length > 80 ? '...' : ''}"`, 'info', 1);
       });
@@ -419,11 +536,11 @@ const SynapsePage: React.FC = () => {
       ...c,
       status: c.id === 'extract' ? 'done' as const : 'pending' as const,
     })));
-    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['Sonar']), sources: 0, durationMs: 0 });
+    setPipelineStats({ steps: 1, apiCalls: 1, services: new Set(['search']), sources: 0, durationMs: 0 });
 
     // Update claim status
     setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'verifying' as const, verification: {
-      subclaims: [], evidence: [], contradictions: [], provenanceNodes: [], provenanceEdges: [],
+      subclaims: [], evidence: [], contradictions: [], consistencyIssues: [], authorityConflicts: [], provenanceNodes: [], provenanceEdges: [],
       currentStep: '', stepLabel: '', completedSteps: [],
     }} : c));
 
@@ -466,8 +583,9 @@ const SynapsePage: React.FC = () => {
             // Process each event type
             setClaims(prev => prev.map(c => {
               if (c.id !== claimId) return c;
-              const v = { ...(c.verification || {
-                subclaims: [], evidence: [], provenanceNodes: [], provenanceEdges: [],
+              const v: VerificationState = { ...(c.verification || {
+                subclaims: [], evidence: [], contradictions: [], consistencyIssues: [], authorityConflicts: [],
+                provenanceNodes: [], provenanceEdges: [],
                 currentStep: '', stepLabel: '', completedSteps: [],
               })};
 
@@ -500,11 +618,14 @@ const SynapsePage: React.FC = () => {
                   break;
                 case 'subclaim_verdict':
                   v.subclaims = v.subclaims.map(sc => sc.id === data.subclaim_id ? {
-                    ...sc, verdict: data.verdict, confidence: data.confidence, summary: data.summary,
+                    ...sc, verdict: data.verdict, confidence: data.confidence, confidence_score: data.confidence_score, confidence_breakdown: data.confidence_breakdown, summary: data.summary,
                   } : sc);
                   break;
                 case 'overall_verdict':
-                  v.overallVerdict = { verdict: data.verdict, confidence: data.confidence, summary: data.summary, detail: data.detail };
+                  v.overallVerdict = { verdict: data.verdict, confidence: data.confidence, confidence_score: data.confidence_score, confidence_breakdown: data.confidence_breakdown, summary: data.summary, detail: data.detail, reconciled: data.reconciled };
+                  break;
+                case 'reconciliation':
+                  v.reconciliation = data as Reconciliation;
                   break;
                 case 'provenance_node':
                   v.provenanceNodes = [...v.provenanceNodes, data as ProvenanceNode];
@@ -519,6 +640,27 @@ const SynapsePage: React.FC = () => {
                   v.contradictions = [...v.contradictions, data as ContradictionItem];
                   break;
                 case 'contradictions_complete':
+                  break;
+                case 'consistency_issue':
+                  v.consistencyIssues = [...v.consistencyIssues, data as ConsistencyIssue];
+                  break;
+                case 'plausibility_assessment':
+                  v.plausibility = data as PlausibilityAssessment;
+                  break;
+                case 'entity_resolution':
+                  v.entityResolution = data as EntityResolution;
+                  break;
+                case 'normalization':
+                  v.normalization = data as Normalization;
+                  break;
+                case 'materiality':
+                  v.materiality = data as MaterialityAssessment;
+                  break;
+                case 'authority_conflict':
+                  v.authorityConflicts = [...v.authorityConflicts, data as AuthorityConflict];
+                  break;
+                case 'risk_signals':
+                  v.riskSignals = data as RiskSignals;
                   break;
                 case 'corrected_claim':
                   v.correctedClaim = data as CorrectedClaim;
@@ -541,22 +683,27 @@ const SynapsePage: React.FC = () => {
             switch (type) {
               case 'step_start': {
                 const chipMap: Record<string, string> = {
-                  decomposition: 'decompose', evaluation: 'evaluate', contradictions: 'sonar_counter',
+                  decomposition: 'decompose', entity_resolution: 'decompose', normalization: 'decompose',
+                  evaluation: 'evaluate', contradictions: 'sonar_counter', consistency: 'sonar_counter',
+                  plausibility: 'evaluate',
                   synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
+                  reconciliation: 'correct', risk_signals: 'synthesize',
                 };
                 const chipId = chipMap[data.step];
-                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'Sonar' : 'Claude'); }
+                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'search' : 'reasoning'); }
                 if (data.step === 'evidence_retrieval') {
-                  // Activate all search chips simultaneously
                   activateChip('edgar'); activateChip('sonar_web');
-                  bumpApiCalls('EDGAR'); bumpApiCalls('Sonar');
+                  bumpApiCalls('filings'); bumpApiCalls('search');
                 }
                 break;
               }
               case 'step_complete': {
                 const completeMap: Record<string, string[]> = {
-                  decomposition: ['decompose'], evaluation: ['evaluate'], contradictions: ['sonar_counter'],
+                  decomposition: ['decompose'], entity_resolution: ['decompose'], normalization: ['decompose'],
+                  evaluation: ['evaluate'], contradictions: ['sonar_counter'], consistency: ['sonar_counter'],
+                  plausibility: ['evaluate'],
                   synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
+                  reconciliation: ['correct'], risk_signals: ['synthesize'],
                   evidence_retrieval: ['edgar', 'sonar_web'],
                 };
                 (completeMap[data.step] || []).forEach(id => completeChip(id));
@@ -564,7 +711,7 @@ const SynapsePage: React.FC = () => {
                 break;
               }
               case 'evidence_found':
-                bumpApiCalls(data.tier === 'sec_filing' ? 'EDGAR' : 'Sonar');
+                bumpApiCalls(data.tier === 'sec_filing' ? 'filings' : 'search');
                 setPipelineStats(prev => ({ ...prev, sources: prev.sources + 1 }));
                 break;
               case 'verification_complete':
@@ -576,9 +723,12 @@ const SynapsePage: React.FC = () => {
             switch (type) {
               case 'step_start': {
                 const badgeMap: Record<string, string> = {
-                  decomposition: 'claude', evaluation: 'claude', contradictions: 'claude',
-                  synthesis: 'claude', correction: 'claude', provenance: 'sonar',
-                  evidence_retrieval: 'edgar',
+                  decomposition: 'reasoning', entity_resolution: 'reasoning', normalization: 'reasoning',
+                  evaluation: 'reasoning', contradictions: 'reasoning', consistency: 'reasoning',
+                  plausibility: 'reasoning',
+                  synthesis: 'reasoning', correction: 'reasoning', reconciliation: 'reasoning',
+                  provenance: 'search', risk_signals: 'reasoning',
+                  evidence_retrieval: 'filings',
                 };
                 addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, badgeMap[data.step]);
                 break;
@@ -587,35 +737,66 @@ const SynapsePage: React.FC = () => {
                 addTrace(`Sub-claim: "${data.text}"`, 'info', 1);
                 break;
               case 'search_start':
-                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'edgar');
+                addTrace(`Searching for: "${(data.subclaim || '').slice(0, 60)}..."`, 'info', 1, 'filings');
                 break;
               case 'evidence_found': {
-                const evBadge = data.tier === 'sec_filing' ? 'edgar' : data.tier === 'counter' ? 'claude' : 'sonar';
+                const evBadge = data.tier === 'sec_filing' ? 'filings' : data.tier === 'counter' ? 'reasoning' : 'search';
                 addTrace(`Found: ${data.title?.slice(0, 50)} [${data.tier}]`, 'info', 2, evBadge);
                 break;
               }
               case 'contradiction_detected':
-                addTrace(`Contradiction: ${data.explanation?.slice(0, 80)}...`, 'info', 1, 'claude');
+                addTrace(`Contradiction: ${data.explanation?.slice(0, 80)}...`, 'info', 1, 'reasoning');
                 break;
               case 'evidence_scored':
-                addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2, 'claude');
+                addTrace(`Scored ${data.id}: ${data.quality_score}/100 (${data.study_type || '?'})`, 'info', 2, 'reasoning');
                 break;
               case 'subclaim_verdict': {
                 const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : data.verdict === 'exaggerated' ? '⚠️' : '🔶';
-                addTrace(`${icon} "${data.text?.slice(0, 50)}..." → ${data.verdict} (${data.confidence})`, 'verdict', 0, 'claude');
+                addTrace(`${icon} "${data.text?.slice(0, 50)}..." → ${data.verdict} (${data.confidence})`, 'verdict', 0, 'reasoning');
                 break;
               }
               case 'overall_verdict': {
                 const icon = data.verdict === 'supported' ? '✅' : data.verdict === 'contradicted' ? '❌' : '⚠️';
-                addTrace(`${icon} OVERALL: ${data.verdict.toUpperCase()} (${data.confidence})`, 'verdict', 0, 'claude');
+                addTrace(`${icon} OVERALL: ${data.verdict.toUpperCase()} (${data.confidence})`, 'verdict', 0, 'reasoning');
                 addTrace(data.summary, 'info', 1);
                 break;
               }
               case 'provenance_node':
-                addTrace(`${data.source_type}: "${data.text?.slice(0, 60)}..." (${data.date || '?'})`, 'info', 1, 'sonar');
+                addTrace(`${data.source_type}: "${data.text?.slice(0, 60)}..." (${data.date || '?'})`, 'info', 1, 'search');
                 break;
+              case 'consistency_issue': {
+                const sevIcon = data.severity === 'high' ? '🔴' : data.severity === 'medium' ? '🟡' : '🟢';
+                addTrace(`${sevIcon} Consistency: ${data.description?.slice(0, 80)}...`, 'info', 1, 'reasoning');
+                break;
+              }
+              case 'plausibility_assessment':
+                addTrace(`🎯 Plausibility: ${data.plausibility_level} (${data.plausibility_score}/100) — ${data.assessment?.slice(0, 80)}...`, 'info', 1, 'reasoning');
+                break;
+              case 'reconciliation': {
+                const accIcon = data.accuracy_level === 'true' ? '✅' : data.accuracy_level === 'essentially_true' ? '✅' : data.accuracy_level === 'misleading' ? '⚠️' : '❌';
+                addTrace(`${accIcon} Reconciliation: ${data.accuracy_level?.replace('_', ' ')} — ${data.explanation?.slice(0, 100)}`, 'verdict', 0, 'reasoning');
+                if (data.override_mechanical) addTrace(`Verdict overridden → ${data.reconciled_verdict}`, 'success', 1, 'reasoning');
+                break;
+              }
+              case 'entity_resolution':
+                addTrace(`Entities resolved: ${(data.entities || []).length} entities, ${(data.resolutions || []).length} mappings`, 'info', 1, 'reasoning');
+                break;
+              case 'normalization':
+                addTrace(`Normalized: ${(data.normalizations || []).length} expressions, ${(data.comparison_warnings || []).length} warnings`, 'info', 1, 'reasoning');
+                break;
+              case 'materiality':
+                addTrace(`Materiality: ${data.materiality_level?.toUpperCase()} (${data.materiality_score}/100) — ${data.category}`, 'info', 1, 'reasoning');
+                break;
+              case 'authority_conflict':
+                addTrace(`Authority conflict [${data.severity}]: ${data.implication?.slice(0, 80)}...`, 'info', 1, 'reasoning');
+                break;
+              case 'risk_signals': {
+                const riskIcon = data.risk_level === 'critical' ? '🔴' : data.risk_level === 'high' ? '🟠' : data.risk_level === 'medium' ? '🟡' : '🟢';
+                addTrace(`${riskIcon} Risk: ${data.risk_level?.toUpperCase()} — ${data.headline}`, 'verdict', 0, 'reasoning');
+                break;
+              }
               case 'corrected_claim':
-                addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1, 'claude');
+                addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1, 'reasoning');
                 break;
               case 'verification_complete':
                 addTrace(`Done in ${(data.total_duration_ms / 1000).toFixed(1)}s — ${data.total_sources} sources`, 'success');
@@ -666,6 +847,38 @@ const SynapsePage: React.FC = () => {
       setIngestedTitle(data.title);
       setSourceType('audio');
       addTrace(`Transcribed: "${data.title}"`, 'success');
+      await extractClaims(data.text);
+    } catch (e) {
+      addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+    }
+    setIsIngesting(false);
+  }, [addTrace, extractClaims]);
+
+  // ─── Document Upload (PDF, PPTX, DOCX) ─────────────────────────────
+
+  const handleDocUpload = useCallback(async (file: File) => {
+    setIsIngesting(true);
+    setClaims([]);
+    setTraceLines([]);
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const typeLabel = ext === 'pdf' ? 'PDF' : ext === 'pptx' ? 'PowerPoint' : ext === 'docx' ? 'Word' : 'Document';
+    addTrace(`Uploading ${typeLabel}: ${file.name}...`, 'step');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch(`${API_BASE}/api/ingest-file`, { method: 'POST', body: formData });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+        addTrace(`${typeLabel} ingestion failed: ${err.detail}`, 'error');
+        setIsIngesting(false);
+        return;
+      }
+      const data = await resp.json();
+      setIngestedText(data.text);
+      setIngestedTitle(data.title);
+      setSourceType(data.source_type || ext);
+      addTrace(`Parsed ${typeLabel}: "${data.title}" (${data.text.split(/\s+/).length} words)`, 'success');
       await extractClaims(data.text);
     } catch (e) {
       addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
@@ -741,9 +954,12 @@ const SynapsePage: React.FC = () => {
           <img src="/synapse-logo.svg" alt="Synapse" style={{ width: '24px', height: '24px', opacity: 0.9 }} />
           <div>
             <div style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px' }}>SYNAPSE</div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#666666', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
-              Financial AI Verification Engine
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#555555', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+              Independent Verification Infrastructure
             </div>
+          </div>
+          <div style={{ marginLeft: '12px', padding: '2px 8px', borderRadius: '2px', border: '1px solid #222', background: 'transparent', fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '0.8px' }}>
+            v2.0
           </div>
         </div>
 
@@ -789,164 +1005,254 @@ const SynapsePage: React.FC = () => {
         }}>
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
             {!claims.length && !isIngesting && !isExtracting && (
-              <div style={{ textAlign: 'center', marginBottom: '20px', animation: 'fadeIn 0.5s ease' }}>
-                <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#ffffff', marginBottom: '6px', letterSpacing: '-0.5px' }}>
-                  Don't trust. Verify.
-                </h1>
-                <p style={{ fontSize: '13px', color: '#666666', maxWidth: '520px', margin: '0 auto', marginBottom: '16px' }}>
-                  Financial claim verification against SEC filings, earnings transcripts, and market data. Auditable, compliance-ready verification with cross-source contradiction detection — streamed live.
-                </p>
-                {/* Try these — subtle inline examples */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '600px', margin: '0 auto' }}>
-                  <span style={{ fontSize: '10px', color: '#333', fontWeight: 600 }}>Try:</span>
-                  {PRELOADED_EXAMPLES.map((ex, i) => (
-                    <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}
+              <div style={{ marginBottom: '24px', animation: 'fadeIn 0.5s ease' }}>
+                {/* Hero */}
+                <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+                  <h1 style={{ fontSize: '28px', fontWeight: 300, color: '#ffffff', marginBottom: '12px', letterSpacing: '-0.3px', lineHeight: 1.35 }}>
+                    Independent verification for every<br />
+                    claim in financial AI output
+                  </h1>
+                  <p style={{ fontSize: '13px', color: '#555', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7, fontWeight: 400 }}>
+                    12-stage pipeline. Entity resolution. Financial normalization.
+                    Peer benchmarking. Materiality scoring. Risk signal extraction.
+                  </p>
+                </div>
+
+                {/* Pipeline — two rows, minimal */}
+                <div style={{
+                  maxWidth: '700px', margin: '0 auto 28px', padding: '16px 20px',
+                  border: '1px solid #141414', borderRadius: '2px', backgroundColor: '#050505',
+                  fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 0' }}>
+                    {[
+                      'ingest', 'extract', 'resolve', 'normalize', 'retrieve', 'evaluate',
+                      'contradict', 'consistency', 'plausibility', 'synthesize', 'trace', 'risk',
+                    ].map((step, i, arr) => (
+                      <React.Fragment key={step}>
+                        <div style={{ fontSize: '8px', fontWeight: 600, color: '#555', letterSpacing: '0.3px' }}>{step}</div>
+                        {i < arr.length - 1 && (
+                          <div style={{ color: '#1a1a1a', fontSize: '7px', flexShrink: 0, padding: '0 1px' }}>{'\u2192'}</div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #111', display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '8px', color: '#2a2a2a' }}>SEC EDGAR &middot; XBRL &middot; Earnings &middot; FRED &middot; Market Data &middot; Adversarial Search</span>
+                    <span style={{ fontSize: '8px', color: '#2a2a2a' }}>materiality &middot; authority hierarchy &middot; peer benchmarks</span>
+                  </div>
+                </div>
+
+                {/* Input area — clean, no emoji */}
+                <div style={{ maxWidth: '600px', margin: '0 auto', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', gap: '0', marginBottom: '6px' }}>
+                    {(['url', 'text'] as const).map(mode => (
+                      <button key={mode} onClick={() => setInputMode(mode)}
+                        style={{
+                          padding: '5px 16px', border: '1px solid',
+                          borderColor: inputMode === mode ? '#333' : '#141414',
+                          borderRadius: mode === 'url' ? '2px 0 0 2px' : '0 2px 2px 0',
+                          backgroundColor: inputMode === mode ? '#111' : 'transparent',
+                          color: inputMode === mode ? '#ccc' : '#444',
+                          fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                          letterSpacing: '0.5px', textTransform: 'uppercase',
+                        }}>
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0', alignItems: 'stretch' }}>
+                    {inputMode === 'url' ? (
+                      <input value={inputValue} onChange={e => setInputValue(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleIngest()}
+                        placeholder="SEC filing URL, earnings call, analyst report, news article..."
+                        style={{
+                          flex: 1, padding: '11px 14px', backgroundColor: '#080808', border: '1px solid #1a1a1a',
+                          borderRadius: '2px 0 0 2px', color: '#ccc', fontSize: '12px', outline: 'none',
+                          fontFamily: "'JetBrains Mono', 'Fira Code', monospace", transition: 'border-color 0.2s',
+                        }}
+                        onFocus={e => e.currentTarget.style.borderColor = '#333'}
+                        onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
+                      />
+                    ) : (
+                      <textarea value={inputValue} onChange={e => setInputValue(e.target.value)}
+                        placeholder="Paste financial text, earnings commentary, CIM excerpt, or claims to verify..."
+                        rows={3}
+                        style={{
+                          flex: 1, padding: '11px 14px', backgroundColor: '#080808', border: '1px solid #1a1a1a',
+                          borderRadius: '2px 0 0 2px', color: '#ccc', fontSize: '12px', outline: 'none', resize: 'vertical',
+                          fontFamily: "'Inter', sans-serif", lineHeight: 1.6, transition: 'border-color 0.2s',
+                        }}
+                        onFocus={e => e.currentTarget.style.borderColor = '#333'}
+                        onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
+                      />
+                    )}
+                    <button data-ingest-btn onClick={handleIngest} disabled={isIngesting || isExtracting || !inputValue.trim()}
                       style={{
-                        padding: '3px 8px', borderRadius: '4px', border: '1px solid #1a1a1a',
-                        backgroundColor: 'transparent', color: '#555', fontSize: '10px', fontWeight: 500,
-                        cursor: 'pointer', transition: 'all 0.15s',
-                        animation: `fadeIn 0.3s ease ${i * 0.06}s both`,
+                        padding: '11px 20px', borderRadius: '0 2px 2px 0',
+                        border: '1px solid #333', borderLeft: 'none',
+                        backgroundColor: '#ffffff', color: '#000000',
+                        fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                        opacity: (isIngesting || isExtracting || !inputValue.trim()) ? 0.3 : 1,
+                        letterSpacing: '0.5px', textTransform: 'uppercase',
+                      }}>
+                      {isIngesting ? '...' : 'Verify'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px', justifyContent: 'center' }}>
+                    <button onClick={() => docInputRef.current?.click()}
+                      style={{
+                        padding: '5px 12px', borderRadius: '2px',
+                        border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#444',
+                        fontSize: '10px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
+                        letterSpacing: '0.3px',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#444'; }}
+                    >
+                      Upload PDF / PPTX / DOCX
+                    </button>
+                    <button onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        padding: '5px 12px', borderRadius: '2px',
+                        border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#444',
+                        fontSize: '10px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
+                        letterSpacing: '0.3px',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#444'; }}
+                    >
+                      Upload Audio
+                    </button>
+                  </div>
+                </div>
+
+                {/* Example claims — monochrome table */}
+                <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#333', letterSpacing: '1.5px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                    Sample verifications
+                  </div>
+                  <div style={{ border: '1px solid #141414', borderRadius: '2px', overflow: 'hidden' }}>
+                    {PRELOADED_EXAMPLES.map((ex, i) => {
+                      const statusColor = ex.verdict === 'supported' ? '#4ade80'
+                        : ex.verdict === 'contradicted' ? '#ef4444'
+                        : ex.verdict === 'mixed' ? '#888' : '#666';
+                      return (
+                        <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}
+                          style={{
+                            width: '100%', padding: '8px 14px',
+                            borderBottom: i < PRELOADED_EXAMPLES.length - 1 ? '1px solid #111' : 'none',
+                            background: 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s',
+                            display: 'flex', alignItems: 'center', gap: '12px',
+                            border: 'none',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#0a0a0a'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{
+                            width: '6px', height: '6px', borderRadius: '50%', backgroundColor: statusColor,
+                            flexShrink: 0, opacity: 0.8,
+                          }} />
+                          <div style={{ flex: 1, fontSize: '11px', color: '#777', lineHeight: 1.4, minWidth: 0 }}>
+                            {ex.claim}
+                          </div>
+                          <div style={{
+                            fontSize: '8px', fontWeight: 700, color: '#444', letterSpacing: '0.5px',
+                            textTransform: 'uppercase', flexShrink: 0, fontFamily: "'JetBrains Mono', monospace",
+                          }}>{ex.tag}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Compact input bar when claims are already loaded */}
+            {(claims.length > 0 || isIngesting || isExtracting) && (
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                  <button onClick={() => setInputMode('url')}
+                    style={{
+                      flex: 1, padding: '6px 10px', border: '1px solid', borderRadius: '2px 0 0 0',
+                      borderColor: inputMode === 'url' ? '#ffffff' : '#1a1a1a',
+                      backgroundColor: inputMode === 'url' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                      color: inputMode === 'url' ? '#ffffff' : '#555555',
+                      fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                    }}>URL</button>
+                  <button onClick={() => setInputMode('text')}
+                    style={{
+                      flex: 1, padding: '6px 10px', border: '1px solid', borderRadius: '0 0 0 2px',
+                      borderColor: inputMode === 'text' ? '#ffffff' : '#1a1a1a',
+                      backgroundColor: inputMode === 'text' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                      color: inputMode === 'text' ? '#ffffff' : '#555555',
+                      fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                    }}>TEXT</button>
+                </div>
+                {inputMode === 'url' ? (
+                  <input value={inputValue} onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleIngest()}
+                    placeholder="Paste a URL..."
+                    style={{
+                      flex: 1, padding: '10px 14px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
+                      borderRadius: '0', color: '#ffffff', fontSize: '13px', outline: 'none',
+                      fontFamily: "'JetBrains Mono', 'Fira Code', monospace", transition: 'border-color 0.15s',
+                    }}
+                    onFocus={e => e.currentTarget.style.borderColor = '#333333'}
+                    onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
+                  />
+                ) : (
+                  <textarea value={inputValue} onChange={e => setInputValue(e.target.value)}
+                    placeholder="Paste text containing claims..."
+                    rows={2}
+                    style={{
+                      flex: 1, padding: '10px 14px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
+                      borderRadius: '0', color: '#ffffff', fontSize: '13px', outline: 'none', resize: 'vertical',
+                      fontFamily: "'Inter', sans-serif", lineHeight: 1.5, transition: 'border-color 0.15s',
+                    }}
+                    onFocus={e => e.currentTarget.style.borderColor = '#333333'}
+                    onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
+                  />
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                  <button data-ingest-btn onClick={handleIngest} disabled={isIngesting || isExtracting || !inputValue.trim()}
+                    style={{
+                      flex: 1, padding: '10px 18px', borderRadius: '0 2px 0 0',
+                      border: '1px solid #333', backgroundColor: '#ffffff', color: '#000000',
+                      fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                      opacity: (isIngesting || isExtracting || !inputValue.trim()) ? 0.4 : 1,
+                    }}>
+                    {isIngesting ? '...' : 'Verify'}
+                  </button>
+                  <div style={{ display: 'flex', gap: '2px' }}>
+                    <button onClick={() => docInputRef.current?.click()}
+                      style={{
+                        flex: 1, padding: '6px 10px', borderRadius: '0 0 0 0',
+                        border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#555555',
+                        fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
                       }}
                       onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#aaa'; }}
                       onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#555'; }}
-                    >
-                      {ex.icon} {ex.claim.length > 35 ? ex.claim.slice(0, 35) + '...' : ex.claim}
-                    </button>
-                  ))}
-                </div>
-
-                {/* ─── Financial Claims Feed ─────────────────────────── */}
-                {financialClaims.length > 0 && (
-                  <div style={{ marginTop: '24px', position: 'relative' }}>
-                    <div style={{
-                      width: '40px', height: '1px', background: '#222', margin: '0 auto 16px',
-                    }} />
-                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#333', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d4af37', animation: 'pulse 2s ease-in-out infinite' }} />
-                      Recent Financial Claims
-                    </div>
-                    <div className="scroll-ticker-wrap" style={{ position: 'relative', overflow: 'hidden', maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)' }}>
-                      <div style={{
-                        display: 'flex', gap: '12px', width: 'max-content',
-                        animation: `scroll-ticker ${Math.max(40, financialClaims.length * 6)}s linear infinite`,
-                      }}>
-                        {[...financialClaims, ...financialClaims].map((fc, i) => {
-                          const typeColors: Record<string, string> = {
-                            financial_metric: '#4ade80', transaction: '#6b9bd2', regulatory: '#d4af37', guidance: '#fbbf24',
-                          };
-                          return (
-                            <button key={`${fc.id}-${i}`}
-                              onClick={() => { setInputMode('text'); setInputValue(fc.text); }}
-                              style={{
-                                flexShrink: 0, width: '300px', padding: '12px 14px',
-                                borderRadius: '10px', border: '1px solid #141414',
-                                background: '#080808',
-                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-                                display: 'flex', flexDirection: 'column', gap: '8px',
-                              }}
-                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.background = '#0c0c0c'; }}
-                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#141414'; e.currentTarget.style.background = '#080808'; }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{
-                                  fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '3px',
-                                  backgroundColor: `${typeColors[fc.type] || '#888'}20`,
-                                  color: typeColors[fc.type] || '#888',
-                                  border: `1px solid ${typeColors[fc.type] || '#888'}40`,
-                                  textTransform: 'uppercase', letterSpacing: '0.3px',
-                                }}>{fc.company}</span>
-                                <span style={{ fontSize: '10px', color: '#3a3a3a', marginLeft: 'auto' }}>{fc.source}</span>
-                              </div>
-                              <div style={{
-                                fontSize: '12px', color: '#888', lineHeight: 1.5,
-                                overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any,
-                              }}>
-                                {fc.text}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', color: '#333' }}>
-                                <span style={{
-                                  fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase',
-                                }}>{fc.type?.replace('_', ' ')}</span>
-                                <div style={{ flex: 1 }} />
-                                <span style={{
-                                  fontSize: '9px', fontWeight: 700, color: '#d4af37', textTransform: 'uppercase',
-                                  padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(212,175,55,0.15)', background: 'rgba(212,175,55,0.04)',
-                                }}>Verify →</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    >File</button>
+                    <button onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        flex: 1, padding: '6px 10px', borderRadius: '0 0 2px 0',
+                        border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#555555',
+                        fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#aaa'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a1a'; e.currentTarget.style.color = '#555'; }}
+                    >Audio</button>
                   </div>
-                )}
+                </div>
               </div>
             )}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                <button onClick={() => setInputMode('url')}
-                  style={{
-                    flex: 1, padding: '6px 10px', border: '1px solid', borderRadius: '6px 0 0 0',
-                    borderColor: inputMode === 'url' ? '#ffffff' : '#1a1a1a',
-                    backgroundColor: inputMode === 'url' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    color: inputMode === 'url' ? '#ffffff' : '#555555',
-                    fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                  }}>🔗 URL</button>
-                <button onClick={() => setInputMode('text')}
-                  style={{
-                    flex: 1, padding: '6px 10px', border: '1px solid', borderRadius: '0 0 0 6px',
-                    borderColor: inputMode === 'text' ? '#ffffff' : '#1a1a1a',
-                    backgroundColor: inputMode === 'text' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    color: inputMode === 'text' ? '#ffffff' : '#555555',
-                    fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                  }}>📝 Text</button>
-              </div>
-              {inputMode === 'url' ? (
-                <input value={inputValue} onChange={e => setInputValue(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleIngest()}
-                  placeholder="Paste a URL — article, blog, YouTube, tweet..."
-                  style={{
-                    flex: 1, padding: '10px 14px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
-                    borderRadius: '0', color: '#ffffff', fontSize: '13px', outline: 'none',
-                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace", transition: 'border-color 0.15s',
-                  }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#333333'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
-                />
-              ) : (
-                <textarea value={inputValue} onChange={e => setInputValue(e.target.value)}
-                  placeholder="Paste text containing claims to verify..."
-                  rows={2}
-                  style={{
-                    flex: 1, padding: '10px 14px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a',
-                    borderRadius: '0', color: '#ffffff', fontSize: '13px', outline: 'none', resize: 'vertical',
-                    fontFamily: "'Inter', sans-serif", lineHeight: 1.5, transition: 'border-color 0.15s',
-                  }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#333333'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#1a1a1a'}
-                />
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                <button data-ingest-btn onClick={handleIngest} disabled={isIngesting || isExtracting || !inputValue.trim()}
-                  style={{
-                    flex: 1, padding: '10px 18px', borderRadius: '0 6px 0 0',
-                    border: '1px solid #ffffff', backgroundColor: '#ffffff', color: '#000000',
-                    fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-                    opacity: (isIngesting || isExtracting || !inputValue.trim()) ? 0.5 : 1,
-                  }}>
-                  {isIngesting ? '...' : 'Analyze'}
-                </button>
-                <button onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    flex: 1, padding: '6px 10px', borderRadius: '0 0 6px 0',
-                    border: '1px solid #1a1a1a', backgroundColor: 'transparent', color: '#555555',
-                    fontSize: '10px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                  }}>🎙️ Audio</button>
-              </div>
-            </div>
             <input ref={fileInputRef} type="file" accept="audio/*,video/*,.mp3,.wav,.mp4,.m4a,.webm"
               style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }}
+            />
+            <input ref={docInputRef} type="file" accept=".pdf,.pptx,.docx,.doc"
+              style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f); e.target.value = ''; }}
             />
           </div>
         </div>
@@ -1272,9 +1578,17 @@ const SynapsePage: React.FC = () => {
                           {v.overallVerdict!.verdict.replace('_', ' ')}
                         </span>
                         <span style={{
-                          fontSize: '10px', fontWeight: 700, color: '#888888', textTransform: 'uppercase',
+                          fontSize: '10px', fontWeight: 700,
+                          color: v.overallVerdict!.confidence_score != null
+                            ? (v.overallVerdict!.confidence_score >= 70 ? '#4ade80' : v.overallVerdict!.confidence_score >= 40 ? '#fbbf24' : '#f87171')
+                            : '#888888',
+                          textTransform: 'uppercase',
                           padding: '2px 8px', borderRadius: '4px', border: '1px solid #333333', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', gap: '4px',
                         }}>
+                          {v.overallVerdict!.confidence_score != null && (
+                            <span style={{ fontWeight: 900, fontSize: '11px' }}>{v.overallVerdict!.confidence_score}</span>
+                          )}
                           {v.overallVerdict!.confidence}
                         </span>
                         <span style={{ fontSize: '12px', color: '#cccccc', flex: 1 }}>
@@ -1284,9 +1598,66 @@ const SynapsePage: React.FC = () => {
                         </span>
                         <span style={{ fontSize: '10px', color: '#555', flexShrink: 0, transition: 'transform 0.2s', transform: verdictExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                       </div>
-                      {verdictExpanded && v.overallVerdict!.detail && (
-                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${vc.border}`, fontSize: '12px', color: '#aaaaaa', lineHeight: 1.6, animation: 'fadeIn 0.2s ease' }}>
-                          {v.overallVerdict!.detail}
+                      {verdictExpanded && (
+                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${vc.border}`, animation: 'fadeIn 0.2s ease' }}>
+                          {v.overallVerdict!.detail && (
+                            <div style={{ fontSize: '12px', color: '#aaaaaa', lineHeight: 1.6, marginBottom: '12px' }}>
+                              {v.overallVerdict!.detail}
+                            </div>
+                          )}
+                          {v.overallVerdict!.confidence_breakdown && (() => {
+                            const bd = v.overallVerdict!.confidence_breakdown!;
+                            const bars: { label: string; score: number; detail: string; color: string }[] = [
+                              { label: 'Sources', score: bd.source_count.score, detail: `${bd.source_count.value} independent sources`, color: '#6b9bd2' },
+                              { label: 'Tier Quality', score: bd.tier_quality.score, detail: `Avg authority: ${bd.tier_quality.value}${bd.tier_quality.has_sec_filing ? ' · SEC filing ✓' : ''}`, color: '#d4af37' },
+                              { label: 'Agreement', score: bd.agreement_ratio.score, detail: `${bd.agreement_ratio.supporting}/${bd.agreement_ratio.total_scored} support · ${bd.agreement_ratio.opposing} oppose`, color: '#4ade80' },
+                              { label: 'Recency', score: bd.recency.score, detail: bd.recency.value ? `Newest: ${bd.recency.value}` : 'Unknown', color: '#a78bfa' },
+                            ];
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ fontSize: '9px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '2px' }}>
+                                  Calibrated Confidence Breakdown
+                                </div>
+                                {bars.map(b => (
+                                  <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '10px', color: '#888', width: '70px', flexShrink: 0, textAlign: 'right' }}>{b.label}</span>
+                                    <div style={{ flex: 1, height: '6px', backgroundColor: '#1a1a1a', borderRadius: '3px', overflow: 'hidden' }}>
+                                      <div style={{ width: `${b.score}%`, height: '100%', backgroundColor: b.color, borderRadius: '3px', transition: 'width 0.5s ease' }} />
+                                    </div>
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: b.color, width: '28px', textAlign: 'right', flexShrink: 0 }}>{b.score}</span>
+                                    <span style={{ fontSize: '9px', color: '#555', width: '160px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.detail}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                          {/* Reconciliation assessment */}
+                          {v.reconciliation && (
+                            <div style={{
+                              marginTop: '12px', padding: '10px 14px', borderRadius: '8px',
+                              border: `1px solid ${v.reconciliation.accuracy_level === 'true' || v.reconciliation.accuracy_level === 'essentially_true' ? '#1a3a1a' : '#3a2a1a'}`,
+                              backgroundColor: v.reconciliation.accuracy_level === 'true' || v.reconciliation.accuracy_level === 'essentially_true' ? '#0a1a0a' : '#1a1008',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#888' }}>
+                                  Final Assessment
+                                </span>
+                                {v.overallVerdict?.reconciled && (
+                                  <span style={{ fontSize: '8px', fontWeight: 700, padding: '1px 6px', borderRadius: '3px', backgroundColor: '#1a3a1a', color: '#4ade80', border: '1px solid #2a4a2a' }}>
+                                    RECONCILED
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#cccccc', lineHeight: 1.6 }}>
+                                {v.reconciliation.explanation}
+                              </div>
+                              {v.reconciliation.detail_added && (
+                                <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5, marginTop: '6px' }}>
+                                  <span style={{ fontWeight: 600, color: '#999' }}>Added detail:</span> {v.reconciliation.detail_added}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1294,7 +1665,7 @@ const SynapsePage: React.FC = () => {
                 })() : (
                   /* Pipeline progress when still verifying */
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    {['decomposition', 'evidence_retrieval', 'evaluation', 'contradictions', 'synthesis', 'provenance', 'correction'].map(step => {
+                    {['decomposition', 'entity_resolution', 'normalization', 'evidence_retrieval', 'evaluation', 'contradictions', 'consistency', 'plausibility', 'synthesis', 'provenance', 'correction', 'reconciliation', 'risk_signals'].map(step => {
                       const isDone = v.completedSteps.includes(step);
                       const isCurrent = v.currentStep === step && !isDone;
                       return (
@@ -1393,8 +1764,11 @@ const SynapsePage: React.FC = () => {
                   { key: 'subclaims' as const, label: 'Sub-Claims', icon: '🔬', count: v.subclaims.length },
                   { key: 'evidence' as const, label: 'Evidence', icon: '📄', count: v.evidence.length },
                   { key: 'contradictions' as const, label: 'Contradictions', icon: '⚡', count: v.contradictions.length },
+                  ...(v.consistencyIssues.length > 0 ? [{ key: 'consistency' as const, label: 'Consistency', icon: '🔍', count: v.consistencyIssues.length }] : []),
+                  ...(v.plausibility ? [{ key: 'plausibility' as const, label: 'Plausibility', icon: '🎯', count: 1 }] : []),
                   { key: 'provenance' as const, label: 'Provenance', icon: '🔗', count: v.provenanceNodes.length },
                   { key: 'correction' as const, label: 'Correction', icon: '✏️', count: v.correctedClaim ? 1 : 0 },
+                  ...(v.riskSignals ? [{ key: 'risk_signals' as const, label: 'Risk', icon: '🚨', count: (v.riskSignals.red_flags || []).length }] : []),
                 ]).map(tab => {
                   const isActive = activeTab === tab.key;
                   return (
@@ -1689,6 +2063,158 @@ const SynapsePage: React.FC = () => {
                   </div>
                 )}
 
+                {/* ── Consistency Issues Tab ─────────────────────────── */}
+                {activeTab === 'consistency' && (
+                  <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                    {v.consistencyIssues.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5, marginBottom: '4px' }}>
+                          Cross-document consistency analysis detected subtle tensions between sources — beyond direct contradictions.
+                        </div>
+                        {v.consistencyIssues.map((ci, i) => {
+                          const typeColors: Record<string, { bg: string; border: string; text: string; label: string }> = {
+                            narrative_drift:        { bg: '#1a0a1a', border: '#3a1a3a', text: '#c084fc', label: 'Narrative Drift' },
+                            metric_inconsistency:   { bg: '#1a0a0a', border: '#3a1a1a', text: '#f87171', label: 'Metric Inconsistency' },
+                            temporal_inconsistency: { bg: '#1a1500', border: '#3a3000', text: '#fbbf24', label: 'Temporal Issue' },
+                            omission_flag:          { bg: '#0a1a1a', border: '#1a3a3a', text: '#6bccc8', label: 'Omission Flag' },
+                            risk_factor_tension:    { bg: '#1a1000', border: '#3a2000', text: '#fb923c', label: 'Risk Factor Tension' },
+                          };
+                          const tc = typeColors[ci.type] || typeColors.omission_flag;
+                          const sevColors: Record<string, string> = { low: '#fbbf24', medium: '#fb923c', high: '#f87171' };
+                          return (
+                            <div key={ci.id || i} style={{
+                              padding: '16px', borderRadius: '10px',
+                              border: `1px solid ${tc.border}`, backgroundColor: tc.bg,
+                              animation: `slideIn 0.3s ease ${i * 0.08}s both`,
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '3px',
+                                  backgroundColor: `${tc.text}20`, color: tc.text, border: `1px solid ${tc.text}40`,
+                                  textTransform: 'uppercase', letterSpacing: '0.5px',
+                                }}>{tc.label}</span>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px',
+                                  color: sevColors[ci.severity] || '#888',
+                                  border: `1px solid ${(sevColors[ci.severity] || '#888')}40`,
+                                  textTransform: 'uppercase',
+                                }}>{ci.severity}</span>
+                                {ci.sources_involved?.length > 0 && (
+                                  <span style={{ fontSize: '9px', color: '#555', marginLeft: 'auto' }}>
+                                    Sources: {ci.sources_involved.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6, marginBottom: '8px' }}>
+                                {ci.description}
+                              </div>
+                              {ci.implication && (
+                                <div style={{
+                                  fontSize: '11px', color: '#999', lineHeight: 1.5, paddingTop: '8px',
+                                  borderTop: `1px solid ${tc.border}`, fontStyle: 'italic',
+                                }}>
+                                  Implication: {ci.implication}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#555555', fontSize: '12px' }}>
+                        No cross-document consistency issues detected
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Plausibility Tab ─────────────────────────────────── */}
+                {activeTab === 'plausibility' && v.plausibility && (
+                  <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                    {/* Plausibility Score Header */}
+                    <div style={{
+                      padding: '20px', borderRadius: '12px', marginBottom: '16px',
+                      border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a',
+                      textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '8px' }}>
+                        Forward-Looking Plausibility
+                      </div>
+                      <div style={{
+                        fontSize: '48px', fontWeight: 800, letterSpacing: '-2px',
+                        color: v.plausibility.plausibility_score >= 70 ? '#4ade80'
+                          : v.plausibility.plausibility_score >= 40 ? '#fbbf24' : '#f87171',
+                      }}>
+                        {v.plausibility.plausibility_score}
+                      </div>
+                      <div style={{
+                        fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px',
+                        color: v.plausibility.plausibility_score >= 70 ? '#4ade80'
+                          : v.plausibility.plausibility_score >= 40 ? '#fbbf24' : '#f87171',
+                        marginBottom: '12px',
+                      }}>
+                        {v.plausibility.plausibility_level?.replace(/_/g, ' ')}
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#aaa', lineHeight: 1.6, maxWidth: '500px', margin: '0 auto' }}>
+                        {v.plausibility.assessment}
+                      </div>
+                    </div>
+
+                    {/* Projection vs Current */}
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                      <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #1a3a1a', backgroundColor: '#0a1a0a' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+                          Projection
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6 }}>
+                          <div><span style={{ color: '#666' }}>Target:</span> {v.plausibility.projection?.target_metric}</div>
+                          <div><span style={{ color: '#666' }}>Value:</span> {v.plausibility.projection?.target_value}</div>
+                          <div><span style={{ color: '#666' }}>By:</span> {v.plausibility.projection?.target_date}</div>
+                          <div><span style={{ color: '#666' }}>Requires:</span> {v.plausibility.projection?.implied_growth_rate}</div>
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #1a1a3a', backgroundColor: '#0a0a1a' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: '#6b9bd2', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+                          Current Trajectory
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6 }}>
+                          <div><span style={{ color: '#666' }}>Current:</span> {v.plausibility.current_trajectory?.current_value}</div>
+                          <div><span style={{ color: '#666' }}>Trend:</span> {v.plausibility.current_trajectory?.trend?.replace(/_/g, ' ')}</div>
+                          <div><span style={{ color: '#666' }}>Historical:</span> {v.plausibility.current_trajectory?.historical_growth_rate}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Risks and Assumptions */}
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      {v.plausibility.key_risks?.length > 0 && (
+                        <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #3a1a1a', backgroundColor: '#1a0a0a' }}>
+                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+                            Key Risks
+                          </div>
+                          {v.plausibility.key_risks.map((r, i) => (
+                            <div key={i} style={{ fontSize: '11px', color: '#bbb', lineHeight: 1.5, marginBottom: '4px', paddingLeft: '10px', borderLeft: '2px solid #3a1a1a' }}>
+                              {r}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {v.plausibility.key_assumptions?.length > 0 && (
+                        <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #1a1a3a', backgroundColor: '#0a0a1a' }}>
+                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+                            Key Assumptions
+                          </div>
+                          {v.plausibility.key_assumptions.map((a, i) => (
+                            <div key={i} style={{ fontSize: '11px', color: '#bbb', lineHeight: 1.5, marginBottom: '4px', paddingLeft: '10px', borderLeft: '2px solid #1a1a3a' }}>
+                              {a}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Provenance Tab (horizontal tree) ────────────────── */}
                 {activeTab === 'provenance' && (
                   <div style={{ animation: 'fadeIn 0.2s ease' }}>
@@ -1844,6 +2370,110 @@ const SynapsePage: React.FC = () => {
                     )}
                   </div>
                 )}
+
+                {/* ── Risk Signals Tab ────────────────────────────────── */}
+                {activeTab === 'risk_signals' && (
+                  <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                    {v.riskSignals ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {/* Risk headline */}
+                        <div style={{
+                          padding: '16px', borderRadius: '10px',
+                          border: `1px solid ${v.riskSignals.risk_level === 'critical' ? '#5c1a1a' : v.riskSignals.risk_level === 'high' ? '#4a2a0a' : '#1a1a2a'}`,
+                          backgroundColor: v.riskSignals.risk_level === 'critical' ? '#1a0808' : v.riskSignals.risk_level === 'high' ? '#1a1008' : '#0a0a12',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px',
+                              color: v.riskSignals.risk_level === 'critical' ? '#f87171' : v.riskSignals.risk_level === 'high' ? '#fb923c' : v.riskSignals.risk_level === 'medium' ? '#fbbf24' : '#4ade80',
+                            }}>
+                              Risk: {v.riskSignals.risk_level} ({v.riskSignals.risk_score}/100)
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '14px', color: '#e0e0e0', lineHeight: 1.6, fontWeight: 600 }}>
+                            {v.riskSignals.headline}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#888', lineHeight: 1.6, marginTop: '8px' }}>
+                            {v.riskSignals.risk_narrative}
+                          </div>
+                        </div>
+
+                        {/* Patterns detected */}
+                        {v.riskSignals.patterns_detected.length > 0 && (
+                          <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#ffffff', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Patterns Detected</div>
+                            {v.riskSignals.patterns_detected.map((p, i) => (
+                              <div key={i} style={{ padding: '10px 0', borderBottom: i < v.riskSignals!.patterns_detected.length - 1 ? '1px solid #111' : 'none' }}>
+                                <div style={{ fontSize: '12px', color: '#e0e0e0', fontWeight: 600, marginBottom: '4px' }}>{p.pattern}</div>
+                                <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5 }}>{p.evidence}</div>
+                                <div style={{ fontSize: '10px', color: '#555', marginTop: '4px' }}>{p.frequency}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Red flags */}
+                        {v.riskSignals.red_flags.length > 0 && (
+                          <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #3a1a1a', backgroundColor: '#1a0a0a' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#f87171', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Red Flags</div>
+                            {v.riskSignals.red_flags.map((f, i) => (
+                              <div key={i} style={{ fontSize: '12px', color: '#fca5a5', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#f87171', flexShrink: 0 }}>●</span> {f}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Recommended actions */}
+                        {v.riskSignals.recommended_actions.length > 0 && (
+                          <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a2a1a', backgroundColor: '#0a1a0a' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#4ade80', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recommended Actions</div>
+                            {v.riskSignals.recommended_actions.map((a, i) => (
+                              <div key={i} style={{ fontSize: '12px', color: '#bbf7d0', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#4ade80', flexShrink: 0 }}>{i + 1}.</span> {a}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Materiality + Authority conflicts summary */}
+                        {(v.materiality || v.authorityConflicts.length > 0) && (
+                          <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+                            {v.materiality && (
+                              <div style={{ marginBottom: v.authorityConflicts.length > 0 ? '12px' : '0' }}>
+                                <div style={{ fontSize: '10px', fontWeight: 700, color: '#ffffff', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Materiality</div>
+                                <div style={{ fontSize: '12px', color: '#aaa', lineHeight: 1.5 }}>
+                                  <span style={{ color: v.materiality.materiality_level === 'critical' ? '#f87171' : v.materiality.materiality_level === 'high' ? '#fb923c' : '#888', fontWeight: 600 }}>
+                                    {v.materiality.materiality_level.toUpperCase()}
+                                  </span>
+                                  {' '}({v.materiality.materiality_score}/100) — {v.materiality.category.replace(/_/g, ' ')}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>{v.materiality.impact_assessment}</div>
+                              </div>
+                            )}
+                            {v.authorityConflicts.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: '10px', fontWeight: 700, color: '#ffffff', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Source Authority Conflicts</div>
+                                {v.authorityConflicts.map((ac, i) => (
+                                  <div key={i} style={{ fontSize: '11px', color: '#888', lineHeight: 1.5, padding: '4px 0', borderBottom: i < v.authorityConflicts.length - 1 ? '1px solid #111' : 'none' }}>
+                                    <span style={{ color: ac.severity === 'critical' ? '#f87171' : ac.severity === 'high' ? '#fb923c' : '#fbbf24', fontWeight: 600 }}>
+                                      [{ac.severity.toUpperCase()}]
+                                    </span>{' '}
+                                    {ac.implication}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#555555', fontSize: '12px' }}>
+                        {selectedClaim.status === 'verifying' ? 'Extracting risk signals...' : 'No risk signals generated yet'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -1897,7 +2527,7 @@ const SynapsePage: React.FC = () => {
 
               {/* Ghost tabs */}
               <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid #111111', backgroundColor: '#050505' }}>
-                {['Sub-Claims', 'Evidence', 'Contradictions', 'Provenance', 'Correction'].map((t, i) => (
+                {['Sub-Claims', 'Evidence', 'Consistency', 'Plausibility', 'Provenance', 'Risk'].map((t, i) => (
                   <div key={t} style={{
                     flex: 1, padding: '10px 8px', textAlign: 'center',
                     borderBottom: i === 2 ? '2px solid #1a1a1a' : '2px solid transparent',
@@ -2046,12 +2676,12 @@ const SynapsePage: React.FC = () => {
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px',
         backgroundColor: '#000000',
       }}>
-        <span style={{ fontSize: '9px', color: '#333333', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Powered by</span>
+        <span style={{ fontSize: '9px', color: '#333333', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pipeline</span>
         {[
-          { label: 'Claude Sonnet', color: '#e8c8a0' },
-          { label: 'Perplexity Sonar', color: '#6bccc8' },
-          { label: 'SEC EDGAR', color: '#d4af37' },
-          { label: 'Deepgram', color: '#a78bfa' },
+          { label: 'Reasoning', color: '#e8c8a0' },
+          { label: 'Evidence Search', color: '#6bccc8' },
+          { label: 'SEC Filings', color: '#d4af37' },
+          { label: 'Transcription', color: '#a78bfa' },
         ].map(s => (
           <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: s.color, opacity: 0.6 }} />
