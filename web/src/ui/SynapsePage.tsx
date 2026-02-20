@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 // ─── API Base URL (Railway backend for real SSE streaming) ─────────────────
 // Local dev: empty string (Vite proxy handles /api → localhost:4000)
@@ -282,6 +283,7 @@ const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
 // ─── Main Component ───────────────────────────────────────────────────────
 
 const SynapsePage: React.FC = () => {
+  const navigate = useNavigate();
   // Input state
   const [inputValue, setInputValue] = useState('');
   const [inputMode, setInputMode] = useState<'url' | 'text'>('url');
@@ -960,6 +962,15 @@ const SynapsePage: React.FC = () => {
           </div>
           <div style={{ marginLeft: '12px', padding: '2px 8px', borderRadius: '2px', border: '1px solid #222', background: 'transparent', fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '0.8px' }}>
             v2.0
+          </div>
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', marginLeft: '12px', borderRadius: '6px', border: '1px solid #1a1a1a', overflow: 'hidden' }}>
+            <button style={{ padding: '4px 12px', border: 'none', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backgroundColor: '#111', color: '#fff' }}>
+              Claim Verification
+            </button>
+            <button onClick={() => navigate('/audit')} style={{ padding: '4px 12px', border: 'none', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backgroundColor: 'transparent', color: '#555' }}>
+              Document Audit
+            </button>
           </div>
         </div>
 
