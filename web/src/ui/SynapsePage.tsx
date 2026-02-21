@@ -31,6 +31,7 @@ const SynapsePage: React.FC = () => {
 
   // UI state
   const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'contradictions' | 'consistency' | 'plausibility' | 'provenance' | 'correction' | 'risk_signals'>('subclaims');
+  const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [verdictExpanded, setVerdictExpanded] = useState(false);
@@ -330,8 +331,10 @@ const SynapsePage: React.FC = () => {
                 case 'evidence_found':
                   v.evidence = [...v.evidence, {
                     id: data.id, subclaim_id: data.subclaim_id, title: data.title,
-                    snippet: data.snippet, tier: data.tier, source: data.source,
+                    snippet: data.snippet, snippet_full: data.snippet_full || data.snippet,
+                    tier: data.tier, source: data.source,
                     year: data.year, citations: data.citations,
+                    citations_urls: data.citations_urls || [],
                     filing_type: data.filing_type, accession_number: data.accession_number,
                     filing_date: data.filing_date, company_ticker: data.company_ticker,
                     verified_against: data.verified_against,
@@ -1886,13 +1889,17 @@ const SynapsePage: React.FC = () => {
                               const tierInfo = TIER_LABELS[ev.tier] || { label: ev.tier, icon: '📋', color: '#94a3b8' };
                               const qScore = ev.quality_score ?? 0;
                               const qColor = qScore >= 70 ? '#4ade80' : qScore >= 40 ? '#fbbf24' : '#94a3b8';
+                              const isExpanded = expandedEvidenceId === ev.id;
                               return (
-                                <div key={ev.id} style={{
-                                  padding: '10px 12px', borderRadius: '8px',
-                                  border: `1px solid ${ev.tier === 'counter' ? '#3a1a1a' : '#1a1a1a'}`,
-                                  backgroundColor: ev.tier === 'counter' ? '#1a0a0a' : '#0a0a0a',
-                                  animation: `slideIn 0.2s ease ${i * 0.04}s both`,
-                                }}>
+                                <div key={ev.id}
+                                  onClick={() => setExpandedEvidenceId(isExpanded ? null : ev.id)}
+                                  style={{
+                                    padding: '10px 12px', borderRadius: '8px',
+                                    border: `1px solid ${isExpanded ? '#333' : ev.tier === 'counter' ? '#3a1a1a' : '#1a1a1a'}`,
+                                    backgroundColor: ev.tier === 'counter' ? '#1a0a0a' : '#0a0a0a',
+                                    animation: `slideIn 0.2s ease ${i * 0.04}s both`,
+                                    cursor: 'pointer', transition: 'border-color 0.2s',
+                                  }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                                     <span style={{ fontSize: '11px' }}>{tierInfo.icon}</span>
                                     <span style={{ fontSize: '9px', fontWeight: 700, color: tierInfo.color, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -1903,7 +1910,6 @@ const SynapsePage: React.FC = () => {
                                         {ev.study_type}
                                       </span>
                                     )}
-                                    {/* Quality gauge */}
                                     {ev.quality_score != null && (
                                       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
                                         <div style={{ width: '40px', height: '4px', borderRadius: '2px', backgroundColor: '#1a1a1a', overflow: 'hidden' }}>
@@ -1922,13 +1928,72 @@ const SynapsePage: React.FC = () => {
                                         {ev.supports_claim === true ? 'SUPPORTS' : ev.supports_claim === false ? 'OPPOSES' : 'PARTIAL'}
                                       </span>
                                     )}
+                                    <span style={{ fontSize: '10px', color: '#555', marginLeft: ev.quality_score != null || ev.supports_claim != null ? '0' : 'auto', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
                                   </div>
                                   <div style={{ fontSize: '12px', fontWeight: 600, color: '#dddddd', marginBottom: '3px' }}>
                                     {ev.title}
                                   </div>
                                   <div style={{ fontSize: '11px', color: '#888888', lineHeight: 1.5 }}>
-                                    {ev.snippet?.slice(0, 180)}{(ev.snippet?.length || 0) > 180 ? '...' : ''}
+                                    {isExpanded ? (ev.snippet_full || ev.snippet) : (ev.snippet?.slice(0, 180) + ((ev.snippet?.length || 0) > 180 ? '...' : ''))}
                                   </div>
+
+                                  {isExpanded && (
+                                    <div style={{ marginTop: '10px', borderTop: '1px solid #1a1a1a', paddingTop: '10px', animation: 'fadeIn 0.2s ease' }}>
+                                      {ev.assessment && (
+                                        <div style={{ marginBottom: '8px' }}>
+                                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Assessment</div>
+                                          <div style={{ fontSize: '11px', color: '#aaa', lineHeight: 1.6 }}>{ev.assessment}</div>
+                                        </div>
+                                      )}
+                                      {ev.source && (
+                                        <div style={{ marginBottom: '8px' }}>
+                                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Source</div>
+                                          <div style={{ fontSize: '11px', color: '#aaa', lineHeight: 1.5 }}>{ev.source}</div>
+                                        </div>
+                                      )}
+                                      {(ev.filing_type || ev.filing_date || ev.accession_number) && (
+                                        <div style={{ marginBottom: '8px' }}>
+                                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Filing Details</div>
+                                          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '11px', color: '#aaa' }}>
+                                            {ev.filing_type && <span><span style={{ color: '#666' }}>Type:</span> {ev.filing_type}</span>}
+                                            {ev.filing_date && <span><span style={{ color: '#666' }}>Date:</span> {ev.filing_date}</span>}
+                                            {ev.company_ticker && <span><span style={{ color: '#666' }}>Ticker:</span> {ev.company_ticker}</span>}
+                                            {ev.accession_number && <span><span style={{ color: '#666' }}>Accession:</span> {ev.accession_number}</span>}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {ev.citations_urls && ev.citations_urls.length > 0 && (
+                                        <div style={{ marginBottom: '8px' }}>
+                                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Sources & Links</div>
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {ev.citations_urls.map((url, ci) => {
+                                              let displayUrl = url;
+                                              try { displayUrl = new URL(url).hostname.replace('www.', ''); } catch {}
+                                              return (
+                                                <a key={ci} href={url} target="_blank" rel="noopener noreferrer"
+                                                  onClick={e => e.stopPropagation()}
+                                                  style={{
+                                                    fontSize: '11px', color: '#6bccc8', textDecoration: 'none',
+                                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                                    padding: '4px 8px', borderRadius: '4px', backgroundColor: '#0d1a1a',
+                                                    border: '1px solid #1a2a2a', transition: 'all 0.15s',
+                                                  }}
+                                                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a4a4a'; e.currentTarget.style.color = '#8eeee8'; }}
+                                                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a2a2a'; e.currentTarget.style.color = '#6bccc8'; }}
+                                                >
+                                                  <span style={{ fontSize: '10px', flexShrink: 0 }}>🔗</span>
+                                                  <span style={{ fontWeight: 600, flexShrink: 0 }}>[{ci + 1}]</span>
+                                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayUrl}</span>
+                                                  <span style={{ fontSize: '9px', color: '#555', marginLeft: 'auto', flexShrink: 0 }}>↗</span>
+                                                </a>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
                                   {/* XBRL Ground Truth Comparison */}
                                   {ev.xbrl_match && (
                                     <div style={{
@@ -1975,6 +2040,7 @@ const SynapsePage: React.FC = () => {
                                     {ev.verified_against && <span style={{ color: '#d4af37', fontWeight: 600 }}>{ev.verified_against}</span>}
                                     {ev.year && <span>{ev.year}</span>}
                                     {ev.citations != null && <span>{ev.citations} cit.</span>}
+                                    {!isExpanded && <span style={{ marginLeft: 'auto', color: '#444' }}>click to expand</span>}
                                   </div>
                                 </div>
                               );
@@ -1989,12 +2055,74 @@ const SynapsePage: React.FC = () => {
                         <div style={{ fontSize: '11px', fontWeight: 700, color: '#555555', marginBottom: '8px' }}>Other Sources</div>
                         {v.evidence.filter(e => !e.subclaim_id || !v.subclaims.find(sc => sc.id === e.subclaim_id)).map((ev, i) => {
                           const tierInfo = TIER_LABELS[ev.tier] || { label: ev.tier, icon: '📋', color: '#94a3b8' };
+                          const isExpanded = expandedEvidenceId === ev.id;
                           return (
-                            <div key={ev.id} style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a', marginBottom: '4px' }}>
+                            <div key={ev.id}
+                              onClick={() => setExpandedEvidenceId(isExpanded ? null : ev.id)}
+                              style={{
+                                padding: '8px 10px', borderRadius: '6px',
+                                border: `1px solid ${isExpanded ? '#333' : '#1a1a1a'}`,
+                                backgroundColor: '#0a0a0a', marginBottom: '4px',
+                                cursor: 'pointer', transition: 'border-color 0.2s',
+                              }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ fontSize: '10px' }}>{tierInfo.icon}</span>
-                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#dddddd' }}>{ev.title}</span>
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#dddddd', flex: 1 }}>{ev.title}</span>
+                                <span style={{ fontSize: '10px', color: '#555', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
                               </div>
+                              {isExpanded && (
+                                <div style={{ marginTop: '8px', animation: 'fadeIn 0.2s ease' }}>
+                                  {(ev.snippet_full || ev.snippet) && (
+                                    <div style={{ fontSize: '11px', color: '#888888', lineHeight: 1.5, marginBottom: '8px' }}>{ev.snippet_full || ev.snippet}</div>
+                                  )}
+                                  {ev.assessment && (
+                                    <div style={{ marginBottom: '8px' }}>
+                                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Assessment</div>
+                                      <div style={{ fontSize: '11px', color: '#aaa', lineHeight: 1.6 }}>{ev.assessment}</div>
+                                    </div>
+                                  )}
+                                  {ev.source && (
+                                    <div style={{ marginBottom: '8px' }}>
+                                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Source</div>
+                                      <div style={{ fontSize: '11px', color: '#aaa', lineHeight: 1.5 }}>{ev.source}</div>
+                                    </div>
+                                  )}
+                                  {ev.citations_urls && ev.citations_urls.length > 0 && (
+                                    <div style={{ marginBottom: '8px' }}>
+                                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Sources & Links</div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {ev.citations_urls.map((url, ci) => {
+                                          let displayUrl = url;
+                                          try { displayUrl = new URL(url).hostname.replace('www.', ''); } catch {}
+                                          return (
+                                            <a key={ci} href={url} target="_blank" rel="noopener noreferrer"
+                                              onClick={e => e.stopPropagation()}
+                                              style={{
+                                                fontSize: '11px', color: '#6bccc8', textDecoration: 'none',
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                padding: '4px 8px', borderRadius: '4px', backgroundColor: '#0d1a1a',
+                                                border: '1px solid #1a2a2a', transition: 'all 0.15s',
+                                              }}
+                                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a4a4a'; e.currentTarget.style.color = '#8eeee8'; }}
+                                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a2a2a'; e.currentTarget.style.color = '#6bccc8'; }}
+                                            >
+                                              <span style={{ fontSize: '10px', flexShrink: 0 }}>🔗</span>
+                                              <span style={{ fontWeight: 600, flexShrink: 0 }}>[{ci + 1}]</span>
+                                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayUrl}</span>
+                                              <span style={{ fontSize: '9px', color: '#555', marginLeft: 'auto', flexShrink: 0 }}>↗</span>
+                                            </a>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div style={{ display: 'flex', gap: '8px', fontSize: '9px', color: '#555555' }}>
+                                    {ev.verified_against && <span style={{ color: '#d4af37', fontWeight: 600 }}>{ev.verified_against}</span>}
+                                    {ev.year && <span>{ev.year}</span>}
+                                    {ev.citations != null && <span>{ev.citations} cit.</span>}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}

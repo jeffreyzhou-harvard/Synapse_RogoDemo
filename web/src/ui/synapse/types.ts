@@ -33,10 +33,12 @@ export interface EvidenceItem {
   subclaim_id?: string;
   title: string;
   snippet: string;
+  snippet_full?: string;
   tier: string;
   source: string;
   year?: number;
   citations?: number;
+  citations_urls?: string[];
   quality_score?: number;
   study_type?: string;
   supports_claim?: boolean | string;
