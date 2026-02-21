@@ -1,325 +1,17 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-
-// ─── API Base URL (Railway backend for real SSE streaming) ─────────────────
-// Local dev: empty string (Vite proxy handles /api → localhost:4000)
-// Production: Railway backend URL
-const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://web-production-d3011.up.railway.app';
-
-// ─── Types ────────────────────────────────────────────────────────────────
-
-interface ExtractedClaim {
-  id: string;
-  original: string;
-  normalized: string;
-  type: string;
-  location?: string;
-  status: 'pending' | 'verifying' | 'done' | 'error';
-  verification?: VerificationState;
-}
-
-interface ConfidenceBreakdown {
-  source_count: { value: number; score: number; weight: number };
-  tier_quality: { value: number; score: number; weight: number; has_sec_filing?: boolean };
-  agreement_ratio: { value: number; score: number; weight: number; supporting: number; opposing: number; total_scored: number };
-  recency: { value: number | null; score: number; weight: number };
-}
-
-interface SubClaim {
-  id: string;
-  text: string;
-  type: string;
-  verdict?: string;
-  confidence?: string;
-  confidence_score?: number;
-  confidence_breakdown?: ConfidenceBreakdown;
-  summary?: string;
-}
-
-interface EvidenceItem {
-  id: string;
-  subclaim_id?: string;
-  title: string;
-  snippet: string;
-  tier: string;
-  source: string;
-  year?: number;
-  citations?: number;
-  quality_score?: number;
-  study_type?: string;
-  supports_claim?: boolean | string;
-  assessment?: string;
-  filing_type?: string;
-  accession_number?: string;
-  filing_date?: string;
-  company_ticker?: string;
-  verified_against?: string;
-  xbrl_match?: string;
-  xbrl_claimed?: string;
-  xbrl_actual?: string;
-  xbrl_discrepancy?: string;
-  xbrl_computation?: string;
-}
-
-interface ContradictionItem {
-  id: string;
-  source_a: { id?: string; type: string; name: string; text: string; filing_ref?: string };
-  source_b: { id?: string; type: string; name: string; text: string; filing_ref?: string };
-  severity: 'low' | 'medium' | 'high';
-  explanation: string;
-}
-
-interface ProvenanceNode {
-  id: string;
-  source_type: string;
-  source_name: string;
-  text: string;
-  date?: string;
-  mutation_severity: string;
-}
-
-interface ProvenanceEdge {
-  from: string;
-  to: string;
-}
-
-interface CorrectedClaim {
-  original: string;
-  corrected: string;
-  steelmanned: string;
-  one_sentence: string;
-  caveats: string[];
-}
-
-interface ConsistencyIssue {
-  id: string;
-  type: string;
-  severity: 'low' | 'medium' | 'high';
-  sources_involved: string[];
-  description: string;
-  implication: string;
-}
-
-interface PlausibilityAssessment {
-  is_forward_looking: boolean;
-  projection: {
-    target_metric: string;
-    target_value: string;
-    target_date: string;
-    implied_growth_rate: string;
-  };
-  current_trajectory: {
-    current_value: string;
-    trend: string;
-    historical_growth_rate: string;
-  };
-  peer_comparison?: {
-    industry_median: string;
-    best_in_class: string;
-    is_outlier: boolean;
-    outlier_explanation: string;
-  };
-  plausibility_score: number;
-  plausibility_level: string;
-  assessment: string;
-  key_risks: string[];
-  key_assumptions: string[];
-}
-
-interface EntityResolution {
-  entities: { canonical_name: string; ticker: string; type: string; aliases: string[] }[];
-  resolutions: { original_text: string; resolved_to: string; context: string }[];
-  ambiguities: string[];
-}
-
-interface Normalization {
-  normalizations: {
-    subclaim_id: string;
-    original_expression: string;
-    normalized_value: string;
-    unit: string;
-    period: string;
-    accounting_basis: string;
-    precision: string;
-    flags: string[];
-  }[];
-  comparison_warnings: string[];
-}
-
-interface MaterialityAssessment {
-  materiality_level: string;
-  materiality_score: number;
-  category: string;
-  error_magnitude: string;
-  impact_assessment: string;
-  attention_flag: boolean;
-}
-
-interface AuthorityConflict {
-  id: string;
-  higher_authority: { id: string; tier: string; authority_label: string; rank: number; position: string };
-  lower_authority: { id: string; tier: string; authority_label: string; rank: number; position: string };
-  severity: string;
-  implication: string;
-}
-
-interface RiskSignals {
-  risk_level: string;
-  risk_score: number;
-  headline: string;
-  patterns_detected: { pattern: string; evidence: string; frequency: string }[];
-  red_flags: string[];
-  recommended_actions: string[];
-  risk_narrative: string;
-}
-
-interface Reconciliation {
-  core_claim_true: boolean | null;
-  misleading: boolean | null;
-  accuracy_level: string;
-  reconciled_verdict: string;
-  override_mechanical: boolean;
-  explanation: string;
-  detail_added: string;
-}
-
-interface NumericalFact {
-  id: string;
-  raw_text: string;
-  value: number;
-  normalized_value: number;
-  unit: string;
-  scale: string;
-  category: string;
-  period_type: string;
-  period_label: string;
-  accounting_basis: string;
-  context_sentence: string;
-}
-
-interface IntraConsistencyIssue {
-  id: string;
-  issue_type: string;
-  severity: string;
-  fact_ids: string[];
-  description: string;
-  expected_value?: number;
-  actual_value?: number;
-  discrepancy_pct?: number;
-}
-
-interface VerificationState {
-  subclaims: SubClaim[];
-  evidence: EvidenceItem[];
-  contradictions: ContradictionItem[];
-  consistencyIssues: ConsistencyIssue[];
-  plausibility?: PlausibilityAssessment;
-  entityResolution?: EntityResolution;
-  normalization?: Normalization;
-  materiality?: MaterialityAssessment;
-  authorityConflicts: AuthorityConflict[];
-  riskSignals?: RiskSignals;
-  reconciliation?: Reconciliation;
-  overallVerdict?: { verdict: string; confidence: string; confidence_score?: number; confidence_breakdown?: ConfidenceBreakdown; summary: string; detail?: string; verified_against?: string; reconciled?: boolean };
-  provenanceNodes: ProvenanceNode[];
-  provenanceEdges: ProvenanceEdge[];
-  provenanceAnalysis?: string;
-  correctedClaim?: CorrectedClaim;
-  numericalFacts?: NumericalFact[];
-  intraConsistencyIssues?: IntraConsistencyIssue[];
-  methodologyIssues?: IntraConsistencyIssue[];
-  numberDependencies?: { source_fact_id: string; derived_fact_id: string; relationship: string; description: string }[];
-  temporalXbrl?: { metrics_tracked: number; total_data_points: number; restatements_found: number; growth_checks: number };
-  restatements?: { period: string; metric: string; severity: string; assessment: string }[];
-  growthVerifications?: { claimed_growth_pct: number; actual_growth_pct: number; metric_key: string; period: string; comparison: { match_level: string; assessment: string } }[];
-  stalenessFindings?: { id: string; evidence_id: string; source_type: string; issue: string; severity: string; description: string; recommendation: string }[];
-  citationResults?: { id: string; source_cited: string; source_type: string; attributed_claim: string; key_value: string; verification_status: string; actual_value: string | null; discrepancy: string | null; assessment: string }[];
-  currentStep: string;
-  stepLabel: string;
-  completedSteps: string[];
-  totalDurationMs?: number;
-  totalSources?: number;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────
-
-const VERDICT_COLORS: Record<string, { bg: string; text: string; border: string; glow: string }> = {
-  supported:            { bg: '#0a1a0a', text: '#4ade80', border: '#1a3a1a', glow: 'rgba(74,222,128,0.12)' },
-  partially_supported:  { bg: '#1a1500', text: '#fbbf24', border: '#3a3000', glow: 'rgba(251,191,36,0.12)' },
-  exaggerated:          { bg: '#1a1000', text: '#fb923c', border: '#3a2000', glow: 'rgba(251,146,60,0.12)' },
-  contradicted:         { bg: '#1a0a0a', text: '#f87171', border: '#3a1a1a', glow: 'rgba(248,113,113,0.12)' },
-  unsupported:          { bg: '#111111', text: '#888888', border: '#222222', glow: 'rgba(136,136,136,0.08)' },
-  mixed:                { bg: '#1a1500', text: '#fbbf24', border: '#3a3000', glow: 'rgba(251,191,36,0.12)' },
-};
-
-const TIER_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  sec_filing:           { label: 'SEC Filing',      icon: '⚖️', color: '#d4af37' },
-  earnings_transcript:  { label: 'Earnings Call',   icon: '🎙️', color: '#6b9bd2' },
-  press_release:        { label: 'Press Release',   icon: '📰', color: '#5ec4a0' },
-  analyst_report:       { label: 'Analyst Report',  icon: '📊', color: '#a78bfa' },
-  market_data:          { label: 'Market Data',     icon: '📈', color: '#4ade80' },
-  counter:              { label: 'Contradicting',   icon: '⚠️', color: '#f87171' },
-};
-
-const MUTATION_COLORS: Record<string, string> = {
-  none: '#4ade80',
-  slight: '#fbbf24',
-  significant: '#fb923c',
-  severe: '#f87171',
-};
-
-const STEP_ICONS: Record<string, string> = {
-  decomposition: '🔬',
-  entity_resolution: '🏢',
-  normalization: '📐',
-  numerical_grounding: '🔢',
-  evidence_retrieval: '🔍',
-  temporal_xbrl: '📅',
-  staleness: '⏰',
-  citation_verification: '📎',
-  evaluation: '⚖️',
-  contradictions: '⚡',
-  consistency: '🔄',
-  plausibility: '📊',
-  synthesis: '🧠',
-  provenance: '🔗',
-  correction: '✏️',
-  reconciliation: '⚖️',
-  risk_signals: '🚨',
-};
-
-// ─── Agent Orchestration ──────────────────────────────────────────────────
-
-interface AgentChip {
-  id: string;
-  service: string;
-  task: string;
-  label: string;
-  color: string;
-  status: 'pending' | 'active' | 'done';
-}
-
-const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
-  reasoning:   { color: '#e8c8a0', label: 'Reasoning' },
-  filings:     { color: '#d4af37', label: 'Filings' },
-  search:      { color: '#6bccc8', label: 'Search' },
-  transcribe:  { color: '#a78bfa', label: 'Transcribe' },
-};
-
-const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
-  { id: 'extract',       service: 'reasoning',  task: 'Extract',        label: 'Extract Claims',               color: '#e8c8a0' },
-  { id: 'decompose',     service: 'reasoning',  task: 'Decompose',      label: 'Decompose Claims',             color: '#e8c8a0' },
-  { id: 'numground',     service: 'reasoning',  task: 'Numbers',        label: 'Numerical Grounding',          color: '#60a5fa' },
-  { id: 'edgar',         service: 'filings',    task: 'SEC Filings',    label: 'SEC Filing Retrieval',          color: '#d4af37' },
-  { id: 'sonar_web',     service: 'search',     task: 'Earnings/News',  label: 'Earnings & News Search',       color: '#6bccc8' },
-  { id: 'temporal',      service: 'filings',    task: 'XBRL Series',    label: 'Multi-Period XBRL',            color: '#d4af37' },
-  { id: 'staleness',     service: 'filings',    task: 'Freshness',      label: 'Source Staleness Check',       color: '#fbbf24' },
-  { id: 'citations',     service: 'reasoning',  task: 'Citations',      label: 'Citation Verification',        color: '#f0abfc' },
-  { id: 'sonar_counter', service: 'reasoning',  task: 'Counter',        label: 'Contradiction Detection',      color: '#e8c8a0' },
-  { id: 'evaluate',      service: 'reasoning',  task: 'Evaluate',       label: 'Evidence Evaluation',           color: '#e8c8a0' },
-  { id: 'synthesize',    service: 'reasoning',  task: 'Synthesize',     label: 'Verdict Synthesis',             color: '#e8c8a0' },
-  { id: 'provenance',    service: 'search',     task: 'Provenance',     label: 'Provenance Tracing',            color: '#6bccc8' },
-  { id: 'correct',       service: 'reasoning',  task: 'Correct',        label: 'Claim Correction',              color: '#e8c8a0' },
-];
+import type {
+  ExtractedClaim, VerificationState, AgentChip, TabId,
+  ContradictionItem, ProvenanceNode, ProvenanceEdge, ConsistencyIssue,
+  PlausibilityAssessment, EntityResolution, Normalization, MaterialityAssessment,
+  AuthorityConflict, RiskSignals, Reconciliation, CorrectedClaim,
+  NumericalFact, IntraConsistencyIssue,
+} from './synapse/types';
+import {
+  API_BASE, VERDICT_COLORS, TIER_LABELS, MUTATION_COLORS, STEP_ICONS,
+  AGENT_BRAND_COLORS, AGENT_COLORS, INITIAL_PIPELINE,
+  STEP_TO_CHIP, STEP_COMPLETE_CHIPS, STEP_BADGE,
+  PRELOADED_EXAMPLES, CLAIM_TYPE_CONFIG, SEVERITY_COLORS,
+} from './synapse/constants';
 
 // ─── Main Component ───────────────────────────────────────────────────────
 
@@ -472,17 +164,6 @@ const SynapsePage: React.FC = () => {
       })
       .catch(() => {});
   }, []);
-
-  // ─── Preloaded Examples ────────────────────────────────────────────
-
-  const PRELOADED_EXAMPLES = [
-    { claim: "Apple's gross margin was 46.2% in Q4 2024", verdict: 'supported', source: '10-K FY2024', tag: 'VERIFIED' },
-    { claim: "Company X acquired Company Y in 2023 for $500M", verdict: 'contradicted', source: 'No 8-K found', tag: 'HALLUCINATION' },
-    { claim: "Nvidia's data center revenue grew 409% YoY", verdict: 'exaggerated', source: '10-K FY2024', tag: 'EXAGGERATED' },
-    { claim: "SaaS market will grow 15% per Gartner 2021", verdict: 'exaggerated', source: 'Revised 2024', tag: 'STALE' },
-    { claim: "Management expects profitability by Q3 2026", verdict: 'partially_supported', source: 'CIM vs 10-K', tag: 'UNVERIFIABLE' },
-    { claim: "95% customer retention (CIM) vs churn risk (10-K)", verdict: 'mixed', source: 'Cross-doc', tag: 'INCONSISTENT' },
-  ];
 
   // ─── Ingest ──────────────────────────────────────────────────────────
 
@@ -758,18 +439,8 @@ const SynapsePage: React.FC = () => {
             // --- Agent chip state transitions ---
             switch (type) {
               case 'step_start': {
-                const chipMap: Record<string, string> = {
-                  decomposition: 'decompose', entity_resolution: 'decompose', normalization: 'decompose',
-                  numerical_grounding: 'numground',
-                  staleness: 'staleness', citation_verification: 'citations',
-                  evaluation: 'evaluate', contradictions: 'sonar_counter', consistency: 'sonar_counter',
-                  plausibility: 'evaluate',
-                  temporal_xbrl: 'temporal',
-                  synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
-                  reconciliation: 'correct', risk_signals: 'synthesize',
-                };
-                const chipId = chipMap[data.step];
-                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'search' : (data.step === 'temporal_xbrl' || data.step === 'staleness') ? 'filings' : 'reasoning'); }
+                const chipId = STEP_TO_CHIP[data.step];
+                if (chipId) { activateChip(chipId); bumpApiCalls(STEP_BADGE[data.step] || 'reasoning'); }
                 if (data.step === 'evidence_retrieval') {
                   activateChip('edgar'); activateChip('sonar_web');
                   bumpApiCalls('filings'); bumpApiCalls('search');
@@ -777,18 +448,7 @@ const SynapsePage: React.FC = () => {
                 break;
               }
               case 'step_complete': {
-                const completeMap: Record<string, string[]> = {
-                  decomposition: ['decompose'], entity_resolution: ['decompose'], normalization: ['decompose'],
-                  numerical_grounding: ['numground'],
-                  staleness: ['staleness'], citation_verification: ['citations'],
-                  evaluation: ['evaluate'], contradictions: ['sonar_counter'], consistency: ['sonar_counter'],
-                  plausibility: ['evaluate'],
-                  temporal_xbrl: ['temporal'],
-                  synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
-                  reconciliation: ['correct'], risk_signals: ['synthesize'],
-                  evidence_retrieval: ['edgar', 'sonar_web'],
-                };
-                (completeMap[data.step] || []).forEach(id => completeChip(id));
+                (STEP_COMPLETE_CHIPS[data.step] || []).forEach(id => completeChip(id));
                 if (data.total_sources) setPipelineStats(prev => ({ ...prev, sources: data.total_sources }));
                 break;
               }
@@ -812,17 +472,7 @@ const SynapsePage: React.FC = () => {
             // --- Add to trace with API badges ---
             switch (type) {
               case 'step_start': {
-                const badgeMap: Record<string, string> = {
-                  decomposition: 'reasoning', entity_resolution: 'reasoning', normalization: 'reasoning',
-                  numerical_grounding: 'reasoning', temporal_xbrl: 'filings',
-                  staleness: 'filings', citation_verification: 'reasoning',
-                  evaluation: 'reasoning', contradictions: 'reasoning', consistency: 'reasoning',
-                  plausibility: 'reasoning',
-                  synthesis: 'reasoning', correction: 'reasoning', reconciliation: 'reasoning',
-                  provenance: 'search', risk_signals: 'reasoning',
-                  evidence_retrieval: 'filings',
-                };
-                addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, badgeMap[data.step]);
+                addTrace(`${STEP_ICONS[data.step] || '▸'} ${data.label}`, 'step', 0, STEP_BADGE[data.step]);
                 break;
               }
               case 'subclaim':
@@ -2063,16 +1713,7 @@ const SynapsePage: React.FC = () => {
                       }}
                     >
                       {reasoningMessages.map((msg, i) => {
-                        const agentColors: Record<string, string> = {
-                          resolver: '#6bccc8', decomposer: '#6bccc8', normalizer: '#6b9bd2',
-                          numerical_engine: '#60a5fa', temporal_analyst: '#d4af37',
-                          staleness_detector: '#fbbf24', citation_verifier: '#f0abfc',
-                          retriever: '#6bccc8', evaluator: '#e8c8a0', contradiction_detector: '#f87171',
-                          consistency_analyzer: '#fbbf24', plausibility_assessor: '#a78bfa',
-                          synthesizer: '#e8c8a0', provenance_tracer: '#6bccc8', reconciler: '#4ade80',
-                          risk_analyst: '#f87171',
-                        };
-                        const color = agentColors[msg.agent] || '#555';
+                        const color = AGENT_COLORS[msg.agent] || '#555';
                         const isLatest = i === reasoningMessages.length - 1 && selectedClaim?.status === 'verifying';
                         return (
                           <div

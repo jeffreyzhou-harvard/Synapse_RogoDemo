@@ -19,11 +19,57 @@ Each step emits structured events for SSE streaming to the frontend.
 """
 
 from __future__ import annotations
-import os, json, time, re, hashlib
-from typing import List, Dict, Any, Optional, Generator
+import os, json, time, re, hashlib, threading
+from typing import List, Dict, Any, Optional, Generator, Tuple
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import httpx
+
+
+# ---------------------------------------------------------------------------
+# In-memory TTL Cache — avoids redundant SEC/XBRL API calls within a session
+# ---------------------------------------------------------------------------
+
+class _TTLCache:
+    """Thread-safe in-memory cache with per-key TTL (seconds)."""
+
+    def __init__(self, default_ttl: int = 600):
+        self._store: Dict[str, Tuple[Any, float]] = {}
+        self._lock = threading.Lock()
+        self._default_ttl = default_ttl
+
+    def get(self, key: str) -> Optional[Any]:
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None
+            value, expires_at = entry
+            if time.time() > expires_at:
+                del self._store[key]
+                return None
+            return value
+
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        with self._lock:
+            self._store[key] = (value, time.time() + (ttl or self._default_ttl))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._store)
+
+
+# Shared caches — persist across verification runs within the same server process
+_cik_cache = _TTLCache(default_ttl=86400)      # CIK lookups: 24h TTL (rarely changes)
+_xbrl_cache = _TTLCache(default_ttl=3600)       # XBRL facts: 1h TTL
+_submissions_cache = _TTLCache(default_ttl=3600) # SEC submissions: 1h TTL
+_edgar_search_cache = _TTLCache(default_ttl=1800) # EDGAR search: 30min TTL
+
+from app import prompts as P
 
 from app.numerical_grounding import (
     extract_financial_facts, check_intra_document_consistency,
@@ -223,32 +269,29 @@ def search_semantic_scholar(query: str, limit: int = 5) -> List[Dict]:
 # Ticker → CIK mapping (via SEC EDGAR)
 # ---------------------------------------------------------------------------
 
-_TICKER_CIK_CACHE: Dict[str, str] = {}
-
 def _resolve_ticker_to_cik(ticker: str) -> Optional[str]:
-    """Resolve a stock ticker to SEC CIK number."""
+    """Resolve a stock ticker to SEC CIK number (cached 24h)."""
     ticker = ticker.upper().strip()
-    if ticker in _TICKER_CIK_CACHE:
-        return _TICKER_CIK_CACHE[ticker]
+    cached = _cik_cache.get(f"cik:{ticker}")
+    if cached is not None:
+        return cached
     try:
-        resp = httpx.get(
-            "https://www.sec.gov/cgi-bin/browse-edgar",
-            params={"action": "getcompany", "company": ticker, "type": "", "dateb": "", "owner": "include", "count": "5", "search_text": "", "output": "atom"},
-            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
-            timeout=10,
-        )
-        # Try ticker-to-CIK JSON endpoint first
-        resp2 = httpx.get(
-            "https://www.sec.gov/files/company_tickers.json",
-            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
-            timeout=10,
-        )
-        if resp2.status_code == 200:
-            tickers = resp2.json()
-            for entry in tickers.values():
+        # Use the company_tickers.json endpoint (cached separately since it's the full list)
+        tickers_data = _cik_cache.get("_all_tickers")
+        if tickers_data is None:
+            resp = httpx.get(
+                "https://www.sec.gov/files/company_tickers.json",
+                headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                tickers_data = resp.json()
+                _cik_cache.set("_all_tickers", tickers_data, ttl=86400)
+        if tickers_data:
+            for entry in tickers_data.values():
                 if entry.get("ticker", "").upper() == ticker:
                     cik = str(entry["cik_str"]).zfill(10)
-                    _TICKER_CIK_CACHE[ticker] = cik
+                    _cik_cache.set(f"cik:{ticker}", cik)
                     return cik
     except Exception as e:
         print(f"[CIK Resolve] Error: {e}")
@@ -321,15 +364,20 @@ def lookup_xbrl_facts(ticker: str, claim_text: str) -> Optional[Dict]:
         return None
 
     try:
-        resp = httpx.get(
-            f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
-            headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
-            timeout=15,
-        )
-        if resp.status_code != 200:
-            return None
+        # Cache XBRL companyfacts (1h TTL) — this is the most expensive API call
+        cache_key = f"xbrl:{cik}"
+        company_data = _xbrl_cache.get(cache_key)
+        if company_data is None:
+            resp = httpx.get(
+                f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+                headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return None
+            company_data = resp.json()
+            _xbrl_cache.set(cache_key, company_data)
 
-        company_data = resp.json()
         entity_name = company_data.get("entityName", "")
         us_gaap = company_data.get("facts", {}).get("us-gaap", {})
 
@@ -389,7 +437,7 @@ Return ONLY valid JSON:
 
 If the claim cannot be matched, return {{"primary_metric": null, "description": "explanation"}}."""
 
-        raw = _call_llm(extract_prompt, "You are a financial data analyst. Identify exactly which XBRL metrics and periods to look up. Be precise with metric key names — use exactly the names shown in the available list.")
+        raw = _call_llm(extract_prompt, P.SYSTEM_XBRL_LOOKUP)
         parsed = _parse_json_from_llm(raw)
         if not isinstance(parsed, dict) or not parsed.get("primary_metric"):
             return None
@@ -534,7 +582,12 @@ If the claim cannot be matched, return {{"primary_metric": null, "description": 
 
 
 def search_edgar(query: str, company: str = "", filing_type: str = "") -> List[Dict]:
-    """Search SEC EDGAR full-text search API for financial filings."""
+    """Search SEC EDGAR full-text search API for financial filings (cached 30min)."""
+    cache_key = f"edgar:{company}:{query}:{filing_type}"
+    cached = _edgar_search_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         params: Dict[str, Any] = {
             "q": f"{company} {query}".strip(),
@@ -579,6 +632,7 @@ def search_edgar(query: str, company: str = "", filing_type: str = "") -> List[D
                     "snippet": f"{company_name} — {src.get('form', '')} filed {src.get('file_date', '')}. Period ending {src.get('period_ending', 'N/A')}. Filing: {adsh}",
                 })
             if results:
+                _edgar_search_cache.set(cache_key, results)
                 return results
     except Exception as e:
         print(f"[EDGAR] Error: {e}")
@@ -897,12 +951,7 @@ Return ONLY a JSON array of consistency issues found (empty array [] if none):
 
 Be precise. Only flag genuine issues, not minor differences in wording. Return ONLY valid JSON."""
 
-    raw = _call_llm(
-        prompt,
-        "You are a forensic financial analyst specializing in cross-document consistency analysis. "
-        "You detect subtle tensions between SEC filings, earnings calls, press releases, and CIMs. "
-        "Be precise and evidence-based — only flag genuine consistency issues."
-    )
+    raw = _call_llm(prompt, P.SYSTEM_CONSISTENCY_ANALYSIS)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, list):
         return parsed
@@ -974,7 +1023,7 @@ Industry: {industry}
 Return ONLY a JSON array of ticker symbols: ["PEER1", "PEER2", "PEER3"]
 Only include well-known public companies. Return ONLY valid JSON."""
 
-        raw = _call_llm(peer_prompt, "Return only a JSON array of stock ticker symbols.")
+        raw = _call_llm(peer_prompt, P.SYSTEM_PEER_LOOKUP)
         peer_tickers = _parse_json_from_llm(raw)
         if not isinstance(peer_tickers, list):
             peer_tickers = []
@@ -1127,12 +1176,7 @@ Return ONLY valid JSON:
 
 Return ONLY valid JSON."""
 
-    raw = _call_llm(
-        prompt,
-        "You are a financial analyst specializing in forward-looking statement analysis. "
-        "Evaluate projections against current financial data, historical trends, and industry benchmarks. "
-        "Be rigorous — most forward-looking claims in CIMs and pitch decks are optimistic."
-    )
+    raw = _call_llm(prompt, P.SYSTEM_PLAUSIBILITY)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -1371,7 +1415,7 @@ Return ONLY a JSON array:
 
 Extract 8-25 claims. Be thorough. Return ONLY valid JSON, no markdown."""
 
-    raw = _call_llm(prompt, "You are a precise financial claim extraction engine specializing in SEC filings, earnings data, CIMs, pitch decks, and market metrics. Extract every verifiable assertion. Return only valid JSON arrays.")
+    raw = _call_llm(prompt, P.SYSTEM_CLAIM_EXTRACTION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, list):
         return parsed
@@ -1403,7 +1447,7 @@ Return ONLY a JSON array:
 
 Return 2-4 sub-claims. Return ONLY valid JSON."""
 
-    raw = _call_llm(prompt, "You are a claim decomposition engine. Break claims into atomic verifiable parts.")
+    raw = _call_llm(prompt, P.SYSTEM_DECOMPOSITION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, list):
         return parsed
@@ -1459,7 +1503,7 @@ Return ONLY valid JSON:
   "ambiguities": ["any unresolvable references"]
 }}"""
 
-    raw = _call_llm(prompt, "You are a financial entity resolution engine. Disambiguate company names, subsidiaries, segments, and pronouns in financial text.")
+    raw = _call_llm(prompt, P.SYSTEM_ENTITY_RESOLUTION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -1527,12 +1571,7 @@ Return ONLY valid JSON:
   ]
 }}"""
 
-    raw = _call_llm(
-        prompt,
-        "You are a financial normalization engine. Standardize units, time periods, "
-        "accounting definitions, and currency across financial claims. Flag ambiguities. "
-        "This is critical for accurate cross-source comparison."
-    )
+    raw = _call_llm(prompt, P.SYSTEM_NORMALIZATION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -1725,7 +1764,7 @@ Return ONLY a JSON array:
   }}
 ]"""
 
-    raw = _call_llm(prompt, "You are an evidence quality evaluator. Be rigorous and precise.")
+    raw = _call_llm(prompt, P.SYSTEM_EVIDENCE_EVALUATION)
     parsed = _parse_json_from_llm(raw)
 
     if isinstance(parsed, list):
@@ -1782,7 +1821,7 @@ Return ONLY a JSON array of contradictions found (empty array [] if none):
 
 Return ONLY valid JSON."""
 
-    raw = _call_llm(prompt, "You are a financial contradiction detection engine. Identify discrepancies between evidence sources with precision.")
+    raw = _call_llm(prompt, P.SYSTEM_CONTRADICTION_DETECTION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, list):
         return parsed
@@ -1953,7 +1992,7 @@ Return ONLY valid JSON:
   "strongest_opposing": "ev-Y" or null
 }}"""
 
-    raw = _call_llm(prompt, "You are a rigorous financial fact-checking verdict synthesizer. Weight SEC filings highest. Be precise and evidence-based.")
+    raw = _call_llm(prompt, P.SYSTEM_VERDICT_SYNTHESIS)
     parsed = _parse_json_from_llm(raw)
     result = parsed if isinstance(parsed, dict) else {"verdict": "unsupported", "confidence": "low", "summary": "Could not synthesize verdict."}
 
@@ -1998,7 +2037,7 @@ Return ONLY valid JSON:
   "detail": "longer explanation of how sub-claims combine"
 }}"""
 
-    raw = _call_llm(prompt, "You are a fact-checking verdict synthesizer.")
+    raw = _call_llm(prompt, P.SYSTEM_VERDICT_OVERALL)
     parsed = _parse_json_from_llm(raw)
     result = parsed if isinstance(parsed, dict) else {"verdict": "unsupported", "confidence": "low", "summary": "Could not determine overall verdict."}
 
@@ -2059,7 +2098,7 @@ Return ONLY valid JSON:
 Order nodes from original source (root) to the claim being checked (leaf).
 Generate 3-6 nodes showing the propagation path."""
 
-    raw = _call_llm(prompt, "You are a misinformation provenance tracer. Reconstruct likely propagation paths.")
+    raw = _call_llm(prompt, P.SYSTEM_PROVENANCE)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict) and "nodes" in parsed:
         return parsed
@@ -2100,7 +2139,7 @@ Return ONLY valid JSON:
   "caveats": ["...", "..."]
 }}"""
 
-    raw = _call_llm(prompt, "You are a precise fact-checking editor. Generate accurate corrected claims.")
+    raw = _call_llm(prompt, P.SYSTEM_CORRECTION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -2179,13 +2218,7 @@ Return ONLY valid JSON:
   "detail_added": "What the correction adds beyond the original claim, if anything"
 }}"""
 
-    raw = _call_llm(
-        prompt,
-        "You are a senior fact-checker performing final verdict reconciliation. "
-        "Your job is to determine whether the CORE CLAIM is true, even if sub-claims "
-        "about minor details were only partially confirmed. Be practical — if the claim "
-        "would not mislead a reasonable reader, it should be marked as true or essentially true."
-    )
+    raw = _call_llm(prompt, P.SYSTEM_RECONCILIATION)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -2259,12 +2292,7 @@ Return ONLY valid JSON:
   "attention_flag": true or false
 }}"""
 
-    raw = _call_llm(
-        prompt,
-        "You are a financial materiality assessor for M&A due diligence. "
-        "Determine whether claim errors are material to investment decisions. "
-        "Be calibrated — not every error matters."
-    )
+    raw = _call_llm(prompt, P.SYSTEM_MATERIALITY)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -2443,12 +2471,7 @@ Return ONLY valid JSON:
   "risk_narrative": "2-4 sentence narrative explaining the overall risk picture for the deal team"
 }}"""
 
-    raw = _call_llm(
-        prompt,
-        "You are a senior due diligence analyst synthesizing verification findings into "
-        "actionable risk signals for an M&A deal team or investment committee. "
-        "Be direct, specific, and actionable. Focus on patterns, not individual errors."
-    )
+    raw = _call_llm(prompt, P.SYSTEM_RISK_SIGNALS)
     parsed = _parse_json_from_llm(raw)
     if isinstance(parsed, dict):
         return parsed
@@ -2609,7 +2632,7 @@ Return ONLY valid JSON:
 
 Return empty array [] if no citations found. Return ONLY valid JSON."""
 
-    raw = _call_llm(citation_prompt, "You are a citation extraction engine. Identify every source attribution in financial text. Be precise.")
+    raw = _call_llm(citation_prompt, P.SYSTEM_CITATION_EXTRACTION)
     citations = _parse_json_from_llm(raw)
     if not isinstance(citations, list):
         citations = []
@@ -2698,7 +2721,7 @@ Return ONLY valid JSON:
   "discrepancy": "description of any discrepancy, or null",
   "assessment": "1-2 sentence assessment"
 }}"""
-                verify_raw = _call_llm(verify_prompt, "You are a citation verification engine. Compare cited claims against actual source evidence.")
+                verify_raw = _call_llm(verify_prompt, P.SYSTEM_CITATION_VERIFICATION)
                 verify_parsed = _parse_json_from_llm(verify_raw)
                 if isinstance(verify_parsed, dict):
                     if verify_parsed.get("supported") is True:
@@ -2726,8 +2749,7 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     t0 = time.time()
 
     # --- Detect company ticker early (used by many stages) ---
-    ticker_prompt = f'What stock ticker (e.g. AAPL, MSFT, TSLA) does this claim reference? Return ONLY the ticker symbol, or "NONE" if no specific company.\n\nClaim: "{claim_text}"'
-    detected_ticker = _call_llm(ticker_prompt, "Return only a stock ticker symbol or NONE.").strip().upper().replace('"', '').replace("'", "")
+    detected_ticker = _call_llm(P.ticker_detection(claim_text), P.SYSTEM_TICKER_DETECTION).strip().upper().replace('"', '').replace("'", "")
     if detected_ticker == "NONE" or len(detected_ticker) > 6 or " " in detected_ticker:
         detected_ticker = ""
 
