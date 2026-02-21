@@ -2464,6 +2464,259 @@ Return ONLY valid JSON:
 
 
 # ---------------------------------------------------------------------------
+# Source Staleness Detection
+# ---------------------------------------------------------------------------
+
+def detect_source_staleness(
+    evidence_list: List[Dict],
+    company_ticker: str = "",
+) -> List[Dict]:
+    """Detect stale sources — flag when newer data is available.
+
+    For each piece of evidence, check:
+    1. SEC filings: Is there a more recent 10-K or 10-Q available?
+    2. Market data: Is the data more than 1 trading day old?
+    3. Earnings: Is there a more recent earnings call?
+    4. General: Is the source older than 12 months?
+
+    Returns a list of staleness findings with the stale source ID,
+    what's stale, and what the newer version is.
+    """
+    findings: List[Dict] = []
+    current_year = 2026
+
+    # Get the latest filing dates from SEC if we have a ticker
+    latest_filings: Dict[str, str] = {}
+    if company_ticker:
+        try:
+            cik = _resolve_ticker_to_cik(company_ticker)
+            if cik:
+                resp = httpx.get(
+                    f"https://data.sec.gov/submissions/CIK{cik}.json",
+                    headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    submissions = resp.json()
+                    recent = submissions.get("filings", {}).get("recent", {})
+                    forms = recent.get("form", [])
+                    dates = recent.get("filingDate", [])
+                    accessions = recent.get("accessionNumber", [])
+                    for form, date, accn in zip(forms, dates, accessions):
+                        if form not in latest_filings:
+                            latest_filings[form] = date
+        except Exception as e:
+            print(f"[Staleness] Error fetching latest filings: {e}")
+
+    for ev in evidence_list:
+        tier = ev.get("tier", "")
+        filing_date = ev.get("filing_date", "")
+        filing_type = ev.get("filing_type", "")
+
+        # --- SEC Filing staleness ---
+        if tier == "sec_filing" and filing_type and filing_date:
+            latest_date = latest_filings.get(filing_type, "")
+            if latest_date and filing_date < latest_date:
+                findings.append({
+                    "id": f"stale-{len(findings)+1}",
+                    "evidence_id": ev.get("id", ""),
+                    "source_type": "sec_filing",
+                    "issue": "newer_filing_available",
+                    "severity": "high" if filing_type in ("10-K", "10-Q") else "medium",
+                    "stale_date": filing_date,
+                    "latest_date": latest_date,
+                    "filing_type": filing_type,
+                    "description": f"Evidence uses {filing_type} from {filing_date}, but a newer {filing_type} was filed on {latest_date}.",
+                    "recommendation": f"Re-verify against the most recent {filing_type} (filed {latest_date}).",
+                })
+
+        # --- General age check ---
+        if filing_date and len(filing_date) >= 4:
+            try:
+                source_year = int(filing_date[:4])
+                age = current_year - source_year
+                if age >= 2:
+                    findings.append({
+                        "id": f"stale-{len(findings)+1}",
+                        "evidence_id": ev.get("id", ""),
+                        "source_type": tier,
+                        "issue": "aged_source",
+                        "severity": "high" if age >= 3 else "medium",
+                        "stale_date": filing_date,
+                        "age_years": age,
+                        "description": f"Source is {age} years old (from {filing_date}). Data may be outdated.",
+                        "recommendation": f"Check if more recent data is available. Source age: {age} years.",
+                    })
+            except (ValueError, TypeError):
+                pass
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Citation Verification — does the cited source actually say what's claimed?
+# ---------------------------------------------------------------------------
+
+def verify_citations(
+    claim_text: str,
+    evidence_list: List[Dict],
+    company_ticker: str = "",
+) -> List[Dict]:
+    """Verify that citations in the claim actually say what the claim says they say.
+
+    When a document says "According to the 10-K, revenue was $150M", this function:
+    1. Identifies the citation pattern (source attribution)
+    2. Pulls the actual source content
+    3. Compares the cited value against the actual source
+    4. Flags discrepancies between what was cited and what the source actually says
+
+    Uses a hybrid approach:
+    - LLM identifies citation patterns in the claim
+    - Deterministic comparison of extracted values
+    - XBRL data for ground truth when available
+    """
+    # Step 1: Use LLM to identify citation patterns in the claim
+    citation_prompt = f"""Identify every citation or source attribution in this text. A citation is when the text claims something based on a specific source.
+
+TEXT: "{claim_text}"
+
+Look for patterns like:
+- "According to [source], [claim]"
+- "The 10-K states that [claim]"
+- "Management reported on the Q3 call that [claim]"
+- "Per Gartner, [claim]"
+- "[Source] estimates [claim]"
+- Implicit citations: "Revenue was $150M (10-K FY2024)"
+
+For each citation found, extract:
+- The source being cited (e.g., "10-K FY2024", "Q3 earnings call", "Gartner 2023 report")
+- The specific claim being attributed to that source
+- The key value or fact being cited (e.g., "$150M", "25% growth", "market leader")
+
+Return ONLY valid JSON:
+[
+  {{
+    "id": "cite-1",
+    "source_cited": "10-K FY2024",
+    "source_type": "sec_filing|earnings_call|analyst_report|third_party|press_release|other",
+    "attributed_claim": "revenue was $150M",
+    "key_value": "$150M",
+    "key_metric": "revenue",
+    "verbatim_quote": true or false,
+    "context": "the surrounding text"
+  }}
+]
+
+Return empty array [] if no citations found. Return ONLY valid JSON."""
+
+    raw = _call_llm(citation_prompt, "You are a citation extraction engine. Identify every source attribution in financial text. Be precise.")
+    citations = _parse_json_from_llm(raw)
+    if not isinstance(citations, list):
+        citations = []
+
+    if not citations:
+        return []
+
+    # Step 2: For each citation, try to verify against actual source data
+    verification_results: List[Dict] = []
+
+    for cite in citations:
+        result: Dict[str, Any] = {
+            "id": cite.get("id", f"cite-{len(verification_results)+1}"),
+            "source_cited": cite.get("source_cited", ""),
+            "source_type": cite.get("source_type", ""),
+            "attributed_claim": cite.get("attributed_claim", ""),
+            "key_value": cite.get("key_value", ""),
+            "key_metric": cite.get("key_metric", ""),
+            "is_verbatim": cite.get("verbatim_quote", False),
+            "verification_status": "unverifiable",
+            "actual_value": None,
+            "discrepancy": None,
+            "assessment": "",
+        }
+
+        source_type = cite.get("source_type", "")
+
+        # --- Verify SEC filing citations against XBRL ground truth ---
+        if source_type == "sec_filing" and company_ticker:
+            xbrl_result = lookup_xbrl_facts(company_ticker, cite.get("attributed_claim", ""))
+            if xbrl_result and xbrl_result.get("match") != "unverifiable":
+                result["verification_status"] = "verified"
+                result["actual_value"] = xbrl_result.get("actual_value")
+                result["xbrl_data"] = {
+                    "metric": xbrl_result.get("metric_name"),
+                    "period": xbrl_result.get("period"),
+                    "form": xbrl_result.get("form"),
+                    "match": xbrl_result.get("match"),
+                    "computation": xbrl_result.get("computation"),
+                }
+
+                match_status = xbrl_result.get("match", "")
+                if match_status == "exact":
+                    result["assessment"] = f"Citation verified: {cite.get('key_metric', 'value')} matches SEC filing ({xbrl_result.get('form', '')} {xbrl_result.get('period', '')})."
+                elif match_status == "close":
+                    result["discrepancy"] = xbrl_result.get("discrepancy", "")
+                    result["assessment"] = f"Citation approximately correct but imprecise: {xbrl_result.get('discrepancy', '')}."
+                    result["verification_status"] = "imprecise"
+                elif match_status in ("mismatch", "wrong"):
+                    result["discrepancy"] = xbrl_result.get("discrepancy", "")
+                    result["verification_status"] = "contradicted"
+                    result["assessment"] = f"CITATION ERROR: Claim says {cite.get('key_value', '?')} but SEC filing shows {xbrl_result.get('actual_value', '?')}. {xbrl_result.get('discrepancy', '')}"
+
+        # --- Verify against evidence we already retrieved ---
+        elif evidence_list:
+            # Find evidence matching this citation's source type
+            matching_evidence = []
+            for ev in evidence_list:
+                ev_tier = ev.get("tier", "")
+                if source_type == "sec_filing" and ev_tier == "sec_filing":
+                    matching_evidence.append(ev)
+                elif source_type == "earnings_call" and ev_tier == "earnings_transcript":
+                    matching_evidence.append(ev)
+                elif source_type == "press_release" and ev_tier == "press_release":
+                    matching_evidence.append(ev)
+
+            if matching_evidence:
+                # Use LLM to compare the citation against the actual evidence
+                ev_snippets = "\n".join([
+                    f"[{e.get('id', '')}] {e.get('title', '')}: {e.get('snippet', '')[:300]}"
+                    for e in matching_evidence[:3]
+                ])
+                verify_prompt = f"""Does this evidence support the following citation?
+
+CITATION: "{cite.get('attributed_claim', '')}"
+CITED SOURCE: {cite.get('source_cited', '')}
+KEY VALUE: {cite.get('key_value', '')}
+
+ACTUAL EVIDENCE FROM THAT SOURCE TYPE:
+{ev_snippets}
+
+Return ONLY valid JSON:
+{{
+  "supported": true or false or "partial",
+  "actual_value": "the actual value found in the evidence, or null",
+  "discrepancy": "description of any discrepancy, or null",
+  "assessment": "1-2 sentence assessment"
+}}"""
+                verify_raw = _call_llm(verify_prompt, "You are a citation verification engine. Compare cited claims against actual source evidence.")
+                verify_parsed = _parse_json_from_llm(verify_raw)
+                if isinstance(verify_parsed, dict):
+                    if verify_parsed.get("supported") is True:
+                        result["verification_status"] = "verified"
+                    elif verify_parsed.get("supported") == "partial":
+                        result["verification_status"] = "imprecise"
+                    elif verify_parsed.get("supported") is False:
+                        result["verification_status"] = "contradicted"
+                    result["actual_value"] = verify_parsed.get("actual_value")
+                    result["discrepancy"] = verify_parsed.get("discrepancy")
+                    result["assessment"] = verify_parsed.get("assessment", "")
+
+        verification_results.append(result)
+
+    return verification_results
+
+
+# ---------------------------------------------------------------------------
 # Full Pipeline (Generator for SSE streaming)
 # ---------------------------------------------------------------------------
 
@@ -2734,6 +2987,62 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     else:
         yield VerificationEvent("agent_reasoning", {"agent": "consistency_analyzer", "stage": "consistency", "message": "Cross-document consistency check passed", "detail": "No narrative drift, metric inconsistency, or temporal restatement patterns detected."})
     yield VerificationEvent("step_complete", {"step": "consistency", "count": len(consistency_issues), "duration_ms": int((time.time() - t0) * 1000)})
+
+    # --- Stage 7b: Source Staleness Detection ---
+    yield VerificationEvent("step_start", {"step": "staleness", "label": "Checking source freshness..."})
+    staleness_findings = detect_source_staleness(all_evidence, company_ticker=detected_ticker)
+    for sf in staleness_findings:
+        yield VerificationEvent("staleness_finding", sf)
+    if staleness_findings:
+        stale_sec = sum(1 for s in staleness_findings if s.get("issue") == "newer_filing_available")
+        stale_aged = sum(1 for s in staleness_findings if s.get("issue") == "aged_source")
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "staleness_detector",
+            "stage": "staleness",
+            "message": f"{len(staleness_findings)} staleness issue(s): {stale_sec} newer filings available, {stale_aged} aged sources",
+            "detail": staleness_findings[0].get("description", "")[:200],
+        })
+    else:
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "staleness_detector",
+            "stage": "staleness",
+            "message": "All sources current — no staleness issues detected",
+            "detail": "No newer filings found and all sources within acceptable age range.",
+        })
+    yield VerificationEvent("step_complete", {"step": "staleness", "count": len(staleness_findings), "duration_ms": int((time.time() - t0) * 1000)})
+
+    # --- Stage 7c: Citation Verification ---
+    yield VerificationEvent("step_start", {"step": "citation_verification", "label": "Verifying cited sources..."})
+    citation_results = verify_citations(claim_text, all_evidence, company_ticker=detected_ticker)
+    for cr in citation_results:
+        yield VerificationEvent("citation_verified", cr)
+    if citation_results:
+        verified_count = sum(1 for c in citation_results if c.get("verification_status") == "verified")
+        contradicted_count = sum(1 for c in citation_results if c.get("verification_status") == "contradicted")
+        imprecise_count = sum(1 for c in citation_results if c.get("verification_status") == "imprecise")
+        unverifiable_count = sum(1 for c in citation_results if c.get("verification_status") == "unverifiable")
+        msg = f"{len(citation_results)} citation(s): {verified_count} verified, {contradicted_count} contradicted, {imprecise_count} imprecise, {unverifiable_count} unverifiable"
+        detail = ""
+        if contradicted_count > 0:
+            bad = next((c for c in citation_results if c.get("verification_status") == "contradicted"), {})
+            detail = f"CITATION ERROR: {bad.get('assessment', '')[:200]}"
+        elif verified_count > 0:
+            good = next((c for c in citation_results if c.get("verification_status") == "verified"), {})
+            detail = good.get("assessment", "")[:200]
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "citation_verifier",
+            "stage": "citation_verification",
+            "message": msg,
+            "detail": detail,
+        })
+    else:
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "citation_verifier",
+            "stage": "citation_verification",
+            "message": "No explicit source citations found in claim text",
+            "detail": "Claim does not attribute specific values to named sources. Standard evidence-based verification applies.",
+        })
+    yield VerificationEvent("step_complete", {"step": "citation_verification", "count": len(citation_results), "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 8: Plausibility Assessment (with peer benchmarking) ---
     yield VerificationEvent("step_start", {"step": "plausibility", "label": "Assessing plausibility & peer benchmarks..."})

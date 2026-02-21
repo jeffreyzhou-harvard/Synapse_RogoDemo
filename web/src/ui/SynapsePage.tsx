@@ -231,6 +231,8 @@ interface VerificationState {
   temporalXbrl?: { metrics_tracked: number; total_data_points: number; restatements_found: number; growth_checks: number };
   restatements?: { period: string; metric: string; severity: string; assessment: string }[];
   growthVerifications?: { claimed_growth_pct: number; actual_growth_pct: number; metric_key: string; period: string; comparison: { match_level: string; assessment: string } }[];
+  stalenessFindings?: { id: string; evidence_id: string; source_type: string; issue: string; severity: string; description: string; recommendation: string }[];
+  citationResults?: { id: string; source_cited: string; source_type: string; attributed_claim: string; key_value: string; verification_status: string; actual_value: string | null; discrepancy: string | null; assessment: string }[];
   currentStep: string;
   stepLabel: string;
   completedSteps: string[];
@@ -272,6 +274,8 @@ const STEP_ICONS: Record<string, string> = {
   numerical_grounding: '🔢',
   evidence_retrieval: '🔍',
   temporal_xbrl: '📅',
+  staleness: '⏰',
+  citation_verification: '📎',
   evaluation: '⚖️',
   contradictions: '⚡',
   consistency: '🔄',
@@ -308,6 +312,8 @@ const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
   { id: 'edgar',         service: 'filings',    task: 'SEC Filings',    label: 'SEC Filing Retrieval',          color: '#d4af37' },
   { id: 'sonar_web',     service: 'search',     task: 'Earnings/News',  label: 'Earnings & News Search',       color: '#6bccc8' },
   { id: 'temporal',      service: 'filings',    task: 'XBRL Series',    label: 'Multi-Period XBRL',            color: '#d4af37' },
+  { id: 'staleness',     service: 'filings',    task: 'Freshness',      label: 'Source Staleness Check',       color: '#fbbf24' },
+  { id: 'citations',     service: 'reasoning',  task: 'Citations',      label: 'Citation Verification',        color: '#f0abfc' },
   { id: 'sonar_counter', service: 'reasoning',  task: 'Counter',        label: 'Contradiction Detection',      color: '#e8c8a0' },
   { id: 'evaluate',      service: 'reasoning',  task: 'Evaluate',       label: 'Evidence Evaluation',           color: '#e8c8a0' },
   { id: 'synthesize',    service: 'reasoning',  task: 'Synthesize',     label: 'Verdict Synthesis',             color: '#e8c8a0' },
@@ -729,6 +735,12 @@ const SynapsePage: React.FC = () => {
                 case 'growth_verification':
                   v.growthVerifications = [...(v.growthVerifications || []), data];
                   break;
+                case 'staleness_finding':
+                  v.stalenessFindings = [...(v.stalenessFindings || []), data];
+                  break;
+                case 'citation_verified':
+                  v.citationResults = [...(v.citationResults || []), data];
+                  break;
                 case 'step_complete':
                   v.completedSteps = [...v.completedSteps, data.step];
                   v.totalDurationMs = data.duration_ms || data.total_duration_ms;
@@ -749,6 +761,7 @@ const SynapsePage: React.FC = () => {
                 const chipMap: Record<string, string> = {
                   decomposition: 'decompose', entity_resolution: 'decompose', normalization: 'decompose',
                   numerical_grounding: 'numground',
+                  staleness: 'staleness', citation_verification: 'citations',
                   evaluation: 'evaluate', contradictions: 'sonar_counter', consistency: 'sonar_counter',
                   plausibility: 'evaluate',
                   temporal_xbrl: 'temporal',
@@ -756,7 +769,7 @@ const SynapsePage: React.FC = () => {
                   reconciliation: 'correct', risk_signals: 'synthesize',
                 };
                 const chipId = chipMap[data.step];
-                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'search' : data.step === 'temporal_xbrl' ? 'filings' : 'reasoning'); }
+                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'search' : (data.step === 'temporal_xbrl' || data.step === 'staleness') ? 'filings' : 'reasoning'); }
                 if (data.step === 'evidence_retrieval') {
                   activateChip('edgar'); activateChip('sonar_web');
                   bumpApiCalls('filings'); bumpApiCalls('search');
@@ -767,6 +780,7 @@ const SynapsePage: React.FC = () => {
                 const completeMap: Record<string, string[]> = {
                   decomposition: ['decompose'], entity_resolution: ['decompose'], normalization: ['decompose'],
                   numerical_grounding: ['numground'],
+                  staleness: ['staleness'], citation_verification: ['citations'],
                   evaluation: ['evaluate'], contradictions: ['sonar_counter'], consistency: ['sonar_counter'],
                   plausibility: ['evaluate'],
                   temporal_xbrl: ['temporal'],
@@ -801,6 +815,7 @@ const SynapsePage: React.FC = () => {
                 const badgeMap: Record<string, string> = {
                   decomposition: 'reasoning', entity_resolution: 'reasoning', normalization: 'reasoning',
                   numerical_grounding: 'reasoning', temporal_xbrl: 'filings',
+                  staleness: 'filings', citation_verification: 'reasoning',
                   evaluation: 'reasoning', contradictions: 'reasoning', consistency: 'reasoning',
                   plausibility: 'reasoning',
                   synthesis: 'reasoning', correction: 'reasoning', reconciliation: 'reasoning',
@@ -898,6 +913,16 @@ const SynapsePage: React.FC = () => {
                 const gvMatch = data.comparison?.match_level;
                 const gvIcon = gvMatch === 'significant' ? '🔴' : gvMatch === 'notable' ? '🟠' : '✅';
                 addTrace(`${gvIcon} Growth: claimed ${data.claimed_growth_pct}% vs actual ${data.actual_growth_pct}% (${data.metric_key})`, 'info', 1, 'filings');
+                break;
+              }
+              case 'staleness_finding': {
+                const staleIcon = data.severity === 'high' ? '🟠' : '🟡';
+                addTrace(`${staleIcon} Stale: ${data.description?.slice(0, 100)}`, 'info', 1, 'filings');
+                break;
+              }
+              case 'citation_verified': {
+                const citeIcon = data.verification_status === 'verified' ? '✅' : data.verification_status === 'contradicted' ? '🔴' : data.verification_status === 'imprecise' ? '🟠' : '⚪';
+                addTrace(`${citeIcon} Citation "${data.source_cited}": ${data.verification_status} — ${data.assessment?.slice(0, 80)}`, 'info', 1, 'reasoning');
                 break;
               }
               case 'verification_complete':
@@ -2041,6 +2066,7 @@ const SynapsePage: React.FC = () => {
                         const agentColors: Record<string, string> = {
                           resolver: '#6bccc8', decomposer: '#6bccc8', normalizer: '#6b9bd2',
                           numerical_engine: '#60a5fa', temporal_analyst: '#d4af37',
+                          staleness_detector: '#fbbf24', citation_verifier: '#f0abfc',
                           retriever: '#6bccc8', evaluator: '#e8c8a0', contradiction_detector: '#f87171',
                           consistency_analyzer: '#fbbf24', plausibility_assessor: '#a78bfa',
                           synthesizer: '#e8c8a0', provenance_tracer: '#6bccc8', reconciler: '#4ade80',
