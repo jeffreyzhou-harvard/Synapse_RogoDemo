@@ -25,6 +25,14 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 import httpx
 
+from app.numerical_grounding import (
+    extract_financial_facts, check_intra_document_consistency,
+    detect_methodology_inconsistencies, build_dependency_graph,
+    trace_downstream_impact, build_temporal_series_from_xbrl,
+    build_multi_metric_series, verify_growth_claim_against_xbrl,
+    detect_all_restatements, compare_values, FinancialFact,
+)
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -2470,11 +2478,22 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     if detected_ticker == "NONE" or len(detected_ticker) > 6 or " " in detected_ticker:
         detected_ticker = ""
 
+    if detected_ticker:
+        yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "pre-processing", "message": f"Detected primary entity: {detected_ticker}", "detail": f"Ticker symbol extracted from claim text. Will use for EDGAR, XBRL, and market data lookups."})
+    else:
+        yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "pre-processing", "message": "No specific ticker identified in claim", "detail": "Will attempt entity resolution from context during decomposition."})
+
     # --- Stage 1: Decomposition ---
     yield VerificationEvent("step_start", {"step": "decomposition", "label": "Decomposing financial claim..."})
     subclaims = decompose_claim(claim_text)
     for sc in subclaims:
         yield VerificationEvent("subclaim", {"id": sc["id"], "text": sc["text"], "type": sc["type"]})
+    type_counts = {}
+    for sc in subclaims:
+        t = sc.get("type", "unknown")
+        type_counts[t] = type_counts.get(t, 0) + 1
+    type_str = ", ".join(f"{v} {k}" for k, v in type_counts.items())
+    yield VerificationEvent("agent_reasoning", {"agent": "decomposer", "stage": "decomposition", "message": f"Extracted {len(subclaims)} atomic sub-claims: {type_str}", "detail": f"Each sub-claim will be independently verified against authoritative sources. Claim types determine retrieval strategy."})
     yield VerificationEvent("step_complete", {"step": "decomposition", "count": len(subclaims), "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 2: Entity Resolution ---
@@ -2485,6 +2504,13 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         "resolutions": entity_resolution.get("resolutions", []),
         "ambiguities": entity_resolution.get("ambiguities", []),
     })
+    ent_count = len(entity_resolution.get("entities", []))
+    amb_count = len(entity_resolution.get("ambiguities", []))
+    if amb_count > 0:
+        yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "entity_resolution", "message": f"Resolved {ent_count} entities — {amb_count} ambiguities flagged", "detail": "Ambiguous references may reduce confidence in downstream matching. Proceeding with best-match resolution."})
+    elif ent_count > 0:
+        ent_names = ", ".join(e.get("name", "?") for e in entity_resolution.get("entities", [])[:3])
+        yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "entity_resolution", "message": f"Resolved {ent_count} entities: {ent_names}", "detail": "All entity references unambiguous. High confidence in downstream source matching."})
     # If entity resolution found a ticker we didn't have, use it
     if not detected_ticker:
         for ent in entity_resolution.get("entities", []):
@@ -2500,7 +2526,42 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         "normalizations": normalization.get("normalizations", []),
         "comparison_warnings": normalization.get("comparison_warnings", []),
     })
+    norm_warnings = normalization.get("comparison_warnings", [])
+    if norm_warnings:
+        yield VerificationEvent("agent_reasoning", {"agent": "normalizer", "stage": "normalization", "message": f"{len(norm_warnings)} comparison warning(s) detected", "detail": norm_warnings[0] if norm_warnings else ""})
     yield VerificationEvent("step_complete", {"step": "normalization", "duration_ms": int((time.time() - t0) * 1000)})
+
+    # --- Stage 3b: Numerical Grounding (deterministic — no LLM) ---
+    yield VerificationEvent("step_start", {"step": "numerical_grounding", "label": "Extracting numerical facts (deterministic)..."})
+    financial_facts = extract_financial_facts(claim_text, entity_hint=detected_ticker)
+    fact_dicts = [f.to_dict() for f in financial_facts]
+    yield VerificationEvent("numerical_facts", {"facts": fact_dicts, "count": len(financial_facts)})
+
+    # Intra-document consistency (math checks within the claim itself)
+    intra_issues = check_intra_document_consistency(financial_facts)
+    for ci in intra_issues:
+        yield VerificationEvent("intra_consistency_issue", ci.to_dict())
+
+    # Methodology consistency
+    method_issues = detect_methodology_inconsistencies(financial_facts)
+    for mi in method_issues:
+        yield VerificationEvent("methodology_issue", mi.to_dict())
+
+    # Number dependency graph
+    dep_graph = build_dependency_graph(financial_facts)
+    dep_dicts = [d.to_dict() for d in dep_graph]
+    yield VerificationEvent("number_dependencies", {"dependencies": dep_dicts, "count": len(dep_graph)})
+
+    all_doc_issues = intra_issues + method_issues
+    if financial_facts:
+        cats = set(f.category.value for f in financial_facts if f.category.value != "other")
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "numerical_engine",
+            "stage": "numerical_grounding",
+            "message": f"Extracted {len(financial_facts)} numerical facts ({', '.join(sorted(cats)[:5])}), {len(intra_issues)} math issues, {len(method_issues)} methodology issues",
+            "detail": f"Dependency graph: {len(dep_graph)} edges. {'MATH ERRORS DETECTED — ' + intra_issues[0].description[:150] if intra_issues else 'No internal arithmetic inconsistencies found.'}"
+        })
+    yield VerificationEvent("step_complete", {"step": "numerical_grounding", "count": len(financial_facts), "issues": len(all_doc_issues), "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 4: Evidence Retrieval (per sub-claim) ---
     all_evidence: List[Dict] = []
@@ -2535,9 +2596,97 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
                 ev_event["xbrl_computation"] = xd.get("computation")
             yield VerificationEvent("evidence_found", ev_event)
         all_evidence.extend(evidence)
+        # Reasoning: summarize what was found for this sub-claim
+        tier_set = set(e.get("tier", "unknown") for e in evidence)
+        xbrl_hits = sum(1 for e in evidence if e.get("xbrl_data"))
+        tier_str = ", ".join(sorted(tier_set)) if tier_set else "none"
+        msg = f"Sub-claim {sc['id']}: {len(evidence)} sources across [{tier_str}]"
+        detail = ""
+        if xbrl_hits:
+            msg += f" — {xbrl_hits} XBRL match(es)"
+            detail = "Machine-readable financial data found. Will cross-reference claimed values against filed figures."
+        elif len(evidence) == 0:
+            detail = "No authoritative sources located. Sub-claim may be unverifiable or require broader search."
+        yield VerificationEvent("agent_reasoning", {"agent": "retriever", "stage": "evidence_retrieval", "message": msg, "detail": detail})
         yield VerificationEvent("search_complete", {"subclaim_id": sc["id"], "count": len(evidence)})
 
+    # Overall retrieval summary
+    total_tiers = set(e.get("tier", "") for e in all_evidence)
+    sec_count = sum(1 for e in all_evidence if e.get("tier", "").startswith("sec") or e.get("filing_type"))
+    yield VerificationEvent("agent_reasoning", {"agent": "retriever", "stage": "evidence_retrieval", "message": f"Retrieval complete: {len(all_evidence)} total sources, {len(total_tiers)} tiers, {sec_count} regulatory filings", "detail": f"Source tiers: {', '.join(sorted(total_tiers))}. Proceeding to quality evaluation."})
     yield VerificationEvent("step_complete", {"step": "evidence_retrieval", "total_sources": len(all_evidence), "duration_ms": int((time.time() - t0) * 1000)})
+
+    # --- Stage 4b: Multi-Period XBRL Temporal Analysis ---
+    temporal_analysis: Dict[str, Any] = {"series": {}, "restatements": [], "growth_checks": []}
+    if detected_ticker:
+        yield VerificationEvent("step_start", {"step": "temporal_xbrl", "label": "Pulling multi-period XBRL data..."})
+        try:
+            cik = _resolve_ticker_to_cik(detected_ticker)
+            if cik:
+                resp = httpx.get(
+                    f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+                    headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    company_data = resp.json()
+                    entity_name = company_data.get("entityName", "")
+                    us_gaap = company_data.get("facts", {}).get("us-gaap", {})
+
+                    # Build temporal series for all key metrics
+                    series_map = build_multi_metric_series(us_gaap, entity_name, detected_ticker)
+                    temporal_analysis["series"] = {k: v.to_dict() for k, v in series_map.items()}
+
+                    # Detect restatements across all metrics
+                    restatements = detect_all_restatements(series_map)
+                    temporal_analysis["restatements"] = restatements
+                    for r in restatements:
+                        yield VerificationEvent("restatement_detected", r)
+
+                    # Verify any growth claims against actual multi-period data
+                    growth_facts = [f for f in financial_facts if f.category.value == "growth_rate"]
+                    for gf in growth_facts:
+                        # Try to match against revenue series first, then others
+                        for mk in ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "NetIncomeLoss", "OperatingIncomeLoss"]:
+                            if mk in series_map:
+                                check = verify_growth_claim_against_xbrl(gf.value, series_map[mk], gf.period_label)
+                                if check.get("verified"):
+                                    check["claimed_text"] = gf.raw_text
+                                    check["metric_key"] = mk
+                                    temporal_analysis["growth_checks"].append(check)
+                                    yield VerificationEvent("growth_verification", check)
+                                    break
+
+                    yield VerificationEvent("temporal_xbrl", {
+                        "metrics_tracked": len(series_map),
+                        "total_data_points": sum(len(s.data_points) for s in series_map.values()),
+                        "restatements_found": len(restatements),
+                        "growth_checks": len(temporal_analysis["growth_checks"]),
+                    })
+
+                    # Reasoning
+                    total_dp = sum(len(s.data_points) for s in series_map.values())
+                    restate_msg = f" RESTATEMENTS DETECTED: {len(restatements)}" if restatements else ""
+                    growth_msg = ""
+                    for gc in temporal_analysis["growth_checks"]:
+                        comp = gc.get("comparison", {})
+                        if comp.get("match_level") in ("notable", "significant"):
+                            growth_msg = f" Growth claim discrepancy: claimed {gc.get('claimed_growth_pct')}% vs actual {gc.get('actual_growth_pct')}%"
+                            break
+                    yield VerificationEvent("agent_reasoning", {
+                        "agent": "temporal_analyst",
+                        "stage": "temporal_xbrl",
+                        "message": f"Pulled {total_dp} data points across {len(series_map)} metrics for {detected_ticker}.{restate_msg}{growth_msg}",
+                        "detail": f"Metrics: {', '.join(sorted(series_map.keys())[:6])}. {'Critical: ' + restatements[0].get('assessment', '')[:120] if restatements else 'No restatements detected across filing periods.'}"
+                    })
+        except Exception as e:
+            yield VerificationEvent("agent_reasoning", {
+                "agent": "temporal_analyst",
+                "stage": "temporal_xbrl",
+                "message": f"Multi-period XBRL analysis failed: {str(e)[:100]}",
+                "detail": "Falling back to single-period verification only."
+            })
+        yield VerificationEvent("step_complete", {"step": "temporal_xbrl", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 5: Evidence Quality Evaluation ---
     yield VerificationEvent("step_start", {"step": "evaluation", "label": "Evaluating source quality..."})
@@ -2550,6 +2699,11 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
             "supports_claim": ev.get("supports_claim"),
             "assessment": ev.get("assessment", ""),
         })
+    # Reasoning: evaluation summary
+    supporting = [e for e in all_evidence if e.get("supports_claim") == True]
+    opposing = [e for e in all_evidence if e.get("supports_claim") == False]
+    avg_quality = sum(e.get("quality_score", 0) for e in all_evidence) / max(len(all_evidence), 1)
+    yield VerificationEvent("agent_reasoning", {"agent": "evaluator", "stage": "evaluation", "message": f"Quality assessment: {len(supporting)} supporting, {len(opposing)} opposing, avg quality {avg_quality:.0f}/100", "detail": f"{'High-quality opposing evidence detected — contradiction likely.' if opposing and any(e.get('quality_score', 0) > 70 for e in opposing) else 'No high-confidence opposing sources.' if not opposing else 'Opposing sources present but lower quality.'}"})
     yield VerificationEvent("step_complete", {"step": "evaluation", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 6: Contradiction Detection ---
@@ -2557,6 +2711,15 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     contradictions = detect_contradictions(claim_text, all_evidence)
     for c in contradictions:
         yield VerificationEvent("contradiction_detected", c)
+    if contradictions:
+        sev_counts = {}
+        for c in contradictions:
+            s = c.get("severity", "unknown")
+            sev_counts[s] = sev_counts.get(s, 0) + 1
+        sev_str = ", ".join(f"{v} {k}" for k, v in sev_counts.items())
+        yield VerificationEvent("agent_reasoning", {"agent": "contradiction_detector", "stage": "contradictions", "message": f"{len(contradictions)} contradiction(s) identified: {sev_str}", "detail": contradictions[0].get("explanation", "")[:200]})
+    else:
+        yield VerificationEvent("agent_reasoning", {"agent": "contradiction_detector", "stage": "contradictions", "message": "No direct contradictions between sources", "detail": "Cross-source comparison found no conflicting factual assertions. Consistency check follows."})
     yield VerificationEvent("contradictions_complete", {"count": len(contradictions), "duration_ms": int((time.time() - t0) * 1000)})
     yield VerificationEvent("step_complete", {"step": "contradictions", "duration_ms": int((time.time() - t0) * 1000)})
 
@@ -2565,6 +2728,11 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     consistency_issues = check_cross_document_consistency(claim_text, all_evidence, company_ticker=detected_ticker)
     for ci in consistency_issues:
         yield VerificationEvent("consistency_issue", ci)
+    if consistency_issues:
+        issue_types = set(ci.get("type", "") for ci in consistency_issues)
+        yield VerificationEvent("agent_reasoning", {"agent": "consistency_analyzer", "stage": "consistency", "message": f"{len(consistency_issues)} consistency issue(s): {', '.join(sorted(issue_types))}", "detail": consistency_issues[0].get("description", "")[:200]})
+    else:
+        yield VerificationEvent("agent_reasoning", {"agent": "consistency_analyzer", "stage": "consistency", "message": "Cross-document consistency check passed", "detail": "No narrative drift, metric inconsistency, or temporal restatement patterns detected."})
     yield VerificationEvent("step_complete", {"step": "consistency", "count": len(consistency_issues), "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 8: Plausibility Assessment (with peer benchmarking) ---
@@ -2572,6 +2740,11 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     plausibility = assess_forward_looking_plausibility(claim_text, all_evidence, company_ticker=detected_ticker)
     if plausibility:
         yield VerificationEvent("plausibility_assessment", plausibility)
+        plaus_level = plausibility.get("plausibility_level", "?")
+        plaus_score = plausibility.get("plausibility_score", "?")
+        peer = plausibility.get("peer_comparison", {})
+        peer_msg = f" Peer outlier: {peer.get('outlier_explanation', '')}" if peer.get("is_outlier") else ""
+        yield VerificationEvent("agent_reasoning", {"agent": "plausibility_assessor", "stage": "plausibility", "message": f"Plausibility: {plaus_level} ({plaus_score}/100){' — OUTLIER vs peers' if peer.get('is_outlier') else ''}", "detail": f"{plausibility.get('assessment', '')[:200]}{peer_msg}"})
     yield VerificationEvent("step_complete", {"step": "plausibility", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 9: Verdict Synthesis (with materiality) ---
@@ -2596,6 +2769,13 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         })
 
     overall = synthesize_overall_verdict(claim_text, subclaim_verdicts, all_evidence=all_evidence)
+    # Reasoning: verdict synthesis rationale
+    verdict_dist = {}
+    for sv in subclaim_verdicts:
+        vv = sv.get("verdict", "unknown")
+        verdict_dist[vv] = verdict_dist.get(vv, 0) + 1
+    dist_str = ", ".join(f"{v} {k}" for k, v in verdict_dist.items())
+    yield VerificationEvent("agent_reasoning", {"agent": "synthesizer", "stage": "synthesis", "message": f"Sub-claim verdicts: {dist_str} → overall: {overall.get('verdict', '?').upper()}", "detail": overall.get("summary", "")[:200]})
     yield VerificationEvent("overall_verdict", {
         "verdict": overall.get("verdict", "unsupported"),
         "confidence": overall.get("confidence", "low"),
@@ -2608,6 +2788,9 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     # Materiality scoring
     materiality = score_materiality(claim_text, overall, subclaim_verdicts)
     yield VerificationEvent("materiality", materiality)
+    mat_level = materiality.get("materiality_level", "?")
+    mat_score = materiality.get("materiality_score", "?")
+    yield VerificationEvent("agent_reasoning", {"agent": "synthesizer", "stage": "materiality", "message": f"Materiality: {mat_level} ({mat_score}/100) — {materiality.get('category', 'unknown').replace('_', ' ')}", "detail": materiality.get("impact_assessment", "")[:200]})
 
     yield VerificationEvent("step_complete", {"step": "synthesis", "duration_ms": int((time.time() - t0) * 1000)})
 
@@ -2624,6 +2807,11 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     authority_conflicts = compute_source_authority_conflicts(all_evidence)
     for ac in authority_conflicts:
         yield VerificationEvent("authority_conflict", ac)
+    if authority_conflicts:
+        crit_count = sum(1 for ac in authority_conflicts if ac.get("severity") == "critical")
+        yield VerificationEvent("agent_reasoning", {"agent": "provenance_tracer", "stage": "provenance", "message": f"{len(authority_conflicts)} authority conflict(s) detected{f', {crit_count} critical' if crit_count else ''}", "detail": authority_conflicts[0].get("implication", "")[:200]})
+    else:
+        yield VerificationEvent("agent_reasoning", {"agent": "provenance_tracer", "stage": "provenance", "message": "Source authority hierarchy consistent", "detail": "No cases where higher-authority sources contradict lower-authority supporting sources."})
 
     yield VerificationEvent("step_complete", {"step": "provenance", "duration_ms": int((time.time() - t0) * 1000)})
 
@@ -2642,6 +2830,12 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     yield VerificationEvent("step_start", {"step": "reconciliation", "label": "Reconciling final verdict..."})
     reconciliation = reconcile_verdict(claim_text, overall, corrected, subclaim_verdicts, all_evidence)
     yield VerificationEvent("reconciliation", reconciliation)
+    recon_override = reconciliation.get("override_mechanical", False)
+    recon_verdict = reconciliation.get("reconciled_verdict", "")
+    if recon_override:
+        yield VerificationEvent("agent_reasoning", {"agent": "reconciler", "stage": "reconciliation", "message": f"Override: mechanical verdict superseded → {recon_verdict.upper()}", "detail": reconciliation.get("explanation", "")[:200]})
+    else:
+        yield VerificationEvent("agent_reasoning", {"agent": "reconciler", "stage": "reconciliation", "message": f"Mechanical verdict confirmed: {overall.get('verdict', '?').upper()}", "detail": reconciliation.get("explanation", "Reconciliation agrees with sub-claim synthesis.")[:200]})
 
     # If reconciliation overrides the mechanical verdict, update overall
     if reconciliation.get("override_mechanical") and reconciliation.get("reconciled_verdict"):
@@ -2674,6 +2868,10 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         normalization=normalization,
     )
     yield VerificationEvent("risk_signals", risk_signals)
+    risk_level = risk_signals.get("risk_level", "?")
+    red_count = len(risk_signals.get("red_flags", []))
+    patterns = risk_signals.get("patterns_detected", [])
+    yield VerificationEvent("agent_reasoning", {"agent": "risk_analyst", "stage": "risk_signals", "message": f"Risk level: {risk_level.upper()} — {red_count} red flag(s), {len(patterns)} pattern(s)", "detail": risk_signals.get("headline", "")[:200]})
     yield VerificationEvent("step_complete", {"step": "risk_signals", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Done ---

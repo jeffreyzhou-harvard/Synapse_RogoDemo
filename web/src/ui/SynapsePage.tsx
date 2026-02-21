@@ -182,6 +182,31 @@ interface Reconciliation {
   detail_added: string;
 }
 
+interface NumericalFact {
+  id: string;
+  raw_text: string;
+  value: number;
+  normalized_value: number;
+  unit: string;
+  scale: string;
+  category: string;
+  period_type: string;
+  period_label: string;
+  accounting_basis: string;
+  context_sentence: string;
+}
+
+interface IntraConsistencyIssue {
+  id: string;
+  issue_type: string;
+  severity: string;
+  fact_ids: string[];
+  description: string;
+  expected_value?: number;
+  actual_value?: number;
+  discrepancy_pct?: number;
+}
+
 interface VerificationState {
   subclaims: SubClaim[];
   evidence: EvidenceItem[];
@@ -199,6 +224,13 @@ interface VerificationState {
   provenanceEdges: ProvenanceEdge[];
   provenanceAnalysis?: string;
   correctedClaim?: CorrectedClaim;
+  numericalFacts?: NumericalFact[];
+  intraConsistencyIssues?: IntraConsistencyIssue[];
+  methodologyIssues?: IntraConsistencyIssue[];
+  numberDependencies?: { source_fact_id: string; derived_fact_id: string; relationship: string; description: string }[];
+  temporalXbrl?: { metrics_tracked: number; total_data_points: number; restatements_found: number; growth_checks: number };
+  restatements?: { period: string; metric: string; severity: string; assessment: string }[];
+  growthVerifications?: { claimed_growth_pct: number; actual_growth_pct: number; metric_key: string; period: string; comparison: { match_level: string; assessment: string } }[];
   currentStep: string;
   stepLabel: string;
   completedSteps: string[];
@@ -237,7 +269,9 @@ const STEP_ICONS: Record<string, string> = {
   decomposition: '🔬',
   entity_resolution: '🏢',
   normalization: '📐',
+  numerical_grounding: '🔢',
   evidence_retrieval: '🔍',
+  temporal_xbrl: '📅',
   evaluation: '⚖️',
   contradictions: '⚡',
   consistency: '🔄',
@@ -270,8 +304,10 @@ const AGENT_BRAND_COLORS: Record<string, { color: string; label: string }> = {
 const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
   { id: 'extract',       service: 'reasoning',  task: 'Extract',        label: 'Extract Claims',               color: '#e8c8a0' },
   { id: 'decompose',     service: 'reasoning',  task: 'Decompose',      label: 'Decompose Claims',             color: '#e8c8a0' },
+  { id: 'numground',     service: 'reasoning',  task: 'Numbers',        label: 'Numerical Grounding',          color: '#60a5fa' },
   { id: 'edgar',         service: 'filings',    task: 'SEC Filings',    label: 'SEC Filing Retrieval',          color: '#d4af37' },
   { id: 'sonar_web',     service: 'search',     task: 'Earnings/News',  label: 'Earnings & News Search',       color: '#6bccc8' },
+  { id: 'temporal',      service: 'filings',    task: 'XBRL Series',    label: 'Multi-Period XBRL',            color: '#d4af37' },
   { id: 'sonar_counter', service: 'reasoning',  task: 'Counter',        label: 'Contradiction Detection',      color: '#e8c8a0' },
   { id: 'evaluate',      service: 'reasoning',  task: 'Evaluate',       label: 'Evidence Evaluation',           color: '#e8c8a0' },
   { id: 'synthesize',    service: 'reasoning',  task: 'Synthesize',     label: 'Verdict Synthesis',             color: '#e8c8a0' },
@@ -300,6 +336,7 @@ const SynapsePage: React.FC = () => {
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [verdictExpanded, setVerdictExpanded] = useState(false);
+  const [reasoningCollapsed, setReasoningCollapsed] = useState(false);
 
   // Share state
   const [shareToast, setShareToast] = useState('');
@@ -308,6 +345,10 @@ const SynapsePage: React.FC = () => {
   // Agent orchestration state (per-claim)
   const [agentChips, setAgentChips] = useState<AgentChip[]>([]);
   const [pipelineStats, setPipelineStats] = useState({ steps: 0, apiCalls: 0, services: new Set<string>(), sources: 0, durationMs: 0 });
+
+  // Reasoning feed
+  const [reasoningMessages, setReasoningMessages] = useState<{ agent: string; stage: string; message: string; detail: string; ts: number }[]>([]);
+  const reasoningRef = useRef<HTMLDivElement>(null);
 
   // Trace log
   const [traceLines, setTraceLines] = useState<{ text: string; type: string; indent: number; badge?: string }[]>([]);
@@ -530,6 +571,8 @@ const SynapsePage: React.FC = () => {
 
     setSelectedClaimId(claimId);
     setVerdictExpanded(false);
+    setReasoningMessages([]);
+    setReasoningCollapsed(false);
 
     // Initialize agent pipeline — extract already done, decompose starts
     setAgentChips(INITIAL_PIPELINE.map(c => ({
@@ -665,6 +708,27 @@ const SynapsePage: React.FC = () => {
                 case 'corrected_claim':
                   v.correctedClaim = data as CorrectedClaim;
                   break;
+                case 'numerical_facts':
+                  v.numericalFacts = data.facts as NumericalFact[];
+                  break;
+                case 'intra_consistency_issue':
+                  v.intraConsistencyIssues = [...(v.intraConsistencyIssues || []), data as IntraConsistencyIssue];
+                  break;
+                case 'methodology_issue':
+                  v.methodologyIssues = [...(v.methodologyIssues || []), data as IntraConsistencyIssue];
+                  break;
+                case 'number_dependencies':
+                  v.numberDependencies = data.dependencies;
+                  break;
+                case 'temporal_xbrl':
+                  v.temporalXbrl = data;
+                  break;
+                case 'restatement_detected':
+                  v.restatements = [...(v.restatements || []), data];
+                  break;
+                case 'growth_verification':
+                  v.growthVerifications = [...(v.growthVerifications || []), data];
+                  break;
                 case 'step_complete':
                   v.completedSteps = [...v.completedSteps, data.step];
                   v.totalDurationMs = data.duration_ms || data.total_duration_ms;
@@ -684,13 +748,15 @@ const SynapsePage: React.FC = () => {
               case 'step_start': {
                 const chipMap: Record<string, string> = {
                   decomposition: 'decompose', entity_resolution: 'decompose', normalization: 'decompose',
+                  numerical_grounding: 'numground',
                   evaluation: 'evaluate', contradictions: 'sonar_counter', consistency: 'sonar_counter',
                   plausibility: 'evaluate',
+                  temporal_xbrl: 'temporal',
                   synthesis: 'synthesize', provenance: 'provenance', correction: 'correct',
                   reconciliation: 'correct', risk_signals: 'synthesize',
                 };
                 const chipId = chipMap[data.step];
-                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'search' : 'reasoning'); }
+                if (chipId) { activateChip(chipId); bumpApiCalls(data.step === 'provenance' ? 'search' : data.step === 'temporal_xbrl' ? 'filings' : 'reasoning'); }
                 if (data.step === 'evidence_retrieval') {
                   activateChip('edgar'); activateChip('sonar_web');
                   bumpApiCalls('filings'); bumpApiCalls('search');
@@ -700,8 +766,10 @@ const SynapsePage: React.FC = () => {
               case 'step_complete': {
                 const completeMap: Record<string, string[]> = {
                   decomposition: ['decompose'], entity_resolution: ['decompose'], normalization: ['decompose'],
+                  numerical_grounding: ['numground'],
                   evaluation: ['evaluate'], contradictions: ['sonar_counter'], consistency: ['sonar_counter'],
                   plausibility: ['evaluate'],
+                  temporal_xbrl: ['temporal'],
                   synthesis: ['synthesize'], provenance: ['provenance'], correction: ['correct'],
                   reconciliation: ['correct'], risk_signals: ['synthesize'],
                   evidence_retrieval: ['edgar', 'sonar_web'],
@@ -719,11 +787,20 @@ const SynapsePage: React.FC = () => {
                 break;
             }
 
+            // --- Reasoning feed ---
+            if (type === 'agent_reasoning') {
+              setReasoningMessages(prev => [...prev, {
+                agent: data.agent, stage: data.stage, message: data.message, detail: data.detail || '', ts: Date.now(),
+              }]);
+              setTimeout(() => reasoningRef.current?.scrollTo({ top: reasoningRef.current.scrollHeight, behavior: 'smooth' }), 50);
+            }
+
             // --- Add to trace with API badges ---
             switch (type) {
               case 'step_start': {
                 const badgeMap: Record<string, string> = {
                   decomposition: 'reasoning', entity_resolution: 'reasoning', normalization: 'reasoning',
+                  numerical_grounding: 'reasoning', temporal_xbrl: 'filings',
                   evaluation: 'reasoning', contradictions: 'reasoning', consistency: 'reasoning',
                   plausibility: 'reasoning',
                   synthesis: 'reasoning', correction: 'reasoning', reconciliation: 'reasoning',
@@ -798,6 +875,31 @@ const SynapsePage: React.FC = () => {
               case 'corrected_claim':
                 addTrace(`Corrected: "${data.corrected?.slice(0, 80)}..."`, 'success', 1, 'reasoning');
                 break;
+              case 'numerical_facts':
+                addTrace(`🔢 Extracted ${data.count} numerical facts (deterministic)`, 'info', 1, 'reasoning');
+                break;
+              case 'intra_consistency_issue': {
+                const ciIcon = data.severity === 'critical' ? '🔴' : data.severity === 'high' ? '🟠' : '🟡';
+                addTrace(`${ciIcon} Math: ${data.description?.slice(0, 100)}`, 'info', 1, 'reasoning');
+                break;
+              }
+              case 'methodology_issue': {
+                const miIcon = data.severity === 'high' ? '🟠' : '🟡';
+                addTrace(`${miIcon} Methodology: ${data.description?.slice(0, 100)}`, 'info', 1, 'reasoning');
+                break;
+              }
+              case 'temporal_xbrl':
+                addTrace(`📅 XBRL: ${data.metrics_tracked} metrics, ${data.total_data_points} data points, ${data.restatements_found} restatements`, 'info', 1, 'filings');
+                break;
+              case 'restatement_detected':
+                addTrace(`🔴 RESTATEMENT: ${data.metric} (${data.period}) — ${data.assessment?.slice(0, 80)}`, 'info', 1, 'filings');
+                break;
+              case 'growth_verification': {
+                const gvMatch = data.comparison?.match_level;
+                const gvIcon = gvMatch === 'significant' ? '🔴' : gvMatch === 'notable' ? '🟠' : '✅';
+                addTrace(`${gvIcon} Growth: claimed ${data.claimed_growth_pct}% vs actual ${data.actual_growth_pct}% (${data.metric_key})`, 'info', 1, 'filings');
+                break;
+              }
               case 'verification_complete':
                 addTrace(`Done in ${(data.total_duration_ms / 1000).toFixed(1)}s — ${data.total_sources} sources`, 'success');
                 break;
@@ -1887,6 +1989,115 @@ const SynapsePage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* ═══ Reasoning Feed ═══════════════════════════════════ */}
+              {reasoningMessages.length > 0 && (
+                <div style={{
+                  flexShrink: 0, borderBottom: '1px solid #1a1a1a', backgroundColor: '#030303',
+                  maxHeight: reasoningCollapsed ? '32px' : (selectedClaim?.status === 'verifying' ? '280px' : '180px'),
+                  overflow: 'hidden', transition: 'max-height 0.3s ease',
+                }}>
+                  {/* Feed header */}
+                  <div
+                    onClick={() => setReasoningCollapsed(p => !p)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 20px',
+                      cursor: 'pointer', borderBottom: reasoningCollapsed ? 'none' : '1px solid #111',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <span style={{
+                      width: '6px', height: '6px', borderRadius: '50%',
+                      backgroundColor: selectedClaim?.status === 'verifying' ? '#fff' : '#333',
+                      animation: selectedClaim?.status === 'verifying' ? 'pulse 1.2s ease-in-out infinite' : 'none',
+                      flexShrink: 0,
+                    }} />
+                    <span style={{
+                      fontSize: '9px', fontWeight: 700, color: '#444', textTransform: 'uppercase',
+                      letterSpacing: '1.2px', fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    }}>
+                      REASONING TRACE
+                    </span>
+                    <span style={{ fontSize: '9px', color: '#333', fontFamily: "'JetBrains Mono', monospace" }}>
+                      {reasoningMessages.length}
+                    </span>
+                    <span style={{
+                      marginLeft: 'auto', fontSize: '8px', color: '#333',
+                      transform: reasoningCollapsed ? 'rotate(0deg)' : 'rotate(180deg)',
+                      transition: 'transform 0.2s',
+                    }}>▼</span>
+                  </div>
+
+                  {/* Feed messages */}
+                  {!reasoningCollapsed && (
+                    <div
+                      ref={reasoningRef}
+                      style={{
+                        overflow: 'auto', padding: '6px 0',
+                        maxHeight: selectedClaim?.status === 'verifying' ? '245px' : '145px',
+                      }}
+                    >
+                      {reasoningMessages.map((msg, i) => {
+                        const agentColors: Record<string, string> = {
+                          resolver: '#6bccc8', decomposer: '#6bccc8', normalizer: '#6b9bd2',
+                          numerical_engine: '#60a5fa', temporal_analyst: '#d4af37',
+                          retriever: '#6bccc8', evaluator: '#e8c8a0', contradiction_detector: '#f87171',
+                          consistency_analyzer: '#fbbf24', plausibility_assessor: '#a78bfa',
+                          synthesizer: '#e8c8a0', provenance_tracer: '#6bccc8', reconciler: '#4ade80',
+                          risk_analyst: '#f87171',
+                        };
+                        const color = agentColors[msg.agent] || '#555';
+                        const isLatest = i === reasoningMessages.length - 1 && selectedClaim?.status === 'verifying';
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              padding: '4px 20px', display: 'flex', gap: '8px', alignItems: 'flex-start',
+                              opacity: isLatest ? 1 : 0.65,
+                              animation: isLatest ? 'fadeIn 0.3s ease' : 'none',
+                            }}
+                          >
+                            {/* Timestamp gutter */}
+                            <span style={{
+                              fontSize: '8px', color: '#222', fontFamily: "'JetBrains Mono', monospace",
+                              minWidth: '32px', flexShrink: 0, paddingTop: '2px', textAlign: 'right',
+                            }}>
+                              {new Date(msg.ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+
+                            {/* Agent label */}
+                            <span style={{
+                              fontSize: '8px', fontWeight: 700, color, minWidth: '80px', flexShrink: 0,
+                              fontFamily: "'JetBrains Mono', monospace", textTransform: 'uppercase',
+                              letterSpacing: '0.3px', paddingTop: '2px',
+                            }}>
+                              {msg.agent.replace(/_/g, ' ').slice(0, 12)}
+                            </span>
+
+                            {/* Message + detail */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{
+                                fontSize: '10px', color: '#999', fontFamily: "'JetBrains Mono', monospace",
+                                lineHeight: 1.4, wordBreak: 'break-word',
+                              }}>
+                                {msg.message}
+                              </div>
+                              {msg.detail && (
+                                <div style={{
+                                  fontSize: '9px', color: '#444', fontFamily: "'JetBrains Mono', monospace",
+                                  lineHeight: 1.4, marginTop: '1px', wordBreak: 'break-word',
+                                }}>
+                                  {msg.detail.slice(0, 180)}{msg.detail.length > 180 ? '...' : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Tabs */}
               <div style={{
