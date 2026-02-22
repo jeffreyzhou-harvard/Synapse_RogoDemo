@@ -2843,13 +2843,31 @@ Return ONLY valid JSON:
 def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, None, None]:
     """Run the full multi-stage financial verification pipeline, yielding events for SSE streaming."""
 
+    from app.entity_intel import (
+        resolve_entity_and_ticker, extract_best_ticker, to_legacy_entity_resolution,
+    )
+    from app.evidence_orchestrator import EvidenceOrchestrator
+    from app.evidence_quality import evaluate_evidence_batch
+    from app.pipeline_metrics import PipelineMetrics
+
     t0 = time.time()
+    metrics = PipelineMetrics()
 
-    # --- Detect company ticker early (used by many stages) ---
-    detected_ticker = _call_llm(P.ticker_detection(claim_text), P.SYSTEM_TICKER_DETECTION).strip().upper().replace('"', '').replace("'", "")
-    if detected_ticker == "NONE" or len(detected_ticker) > 6 or " " in detected_ticker:
-        detected_ticker = ""
+    # ─── B1: Merged Ticker Detection + Entity Resolution (1 LLM call) ───
+    with metrics.stage("entity_intel"):
+        entity_intel = resolve_entity_and_ticker(
+            claim_text,
+            call_llm=_call_llm,
+            parse_json=_parse_json_from_llm,
+            cache=_xbrl_cache,
+        )
+        if not entity_intel.get("_cache_hit"):
+            metrics.inc_llm()
+        else:
+            metrics.inc_cache_hit()
+        detected_ticker = extract_best_ticker(entity_intel)
 
+    # Emit backward-compat SSE events that frontend already expects
     if detected_ticker:
         yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "pre-processing", "message": f"Detected primary entity: {detected_ticker}", "detail": f"Ticker symbol extracted from claim text. Will use for EDGAR, XBRL, and market data lookups."})
     else:
@@ -2857,6 +2875,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
 
     # --- Stage 1: Decomposition ---
     yield VerificationEvent("step_start", {"step": "decomposition", "label": "Decomposing financial claim..."})
+    metrics.start_stage("decomposition")
+    metrics.inc_llm()
     subclaims = decompose_claim(claim_text)
     for sc in subclaims:
         yield VerificationEvent("subclaim", {"id": sc["id"], "text": sc["text"], "type": sc["type"]})
@@ -2866,26 +2886,27 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         type_counts[t] = type_counts.get(t, 0) + 1
     type_str = ", ".join(f"{v} {k}" for k, v in type_counts.items())
     yield VerificationEvent("agent_reasoning", {"agent": "decomposer", "stage": "decomposition", "message": f"Extracted {len(subclaims)} atomic sub-claims: {type_str}", "detail": f"Each sub-claim will be independently verified against authoritative sources. Claim types determine retrieval strategy."})
+    metrics.end_stage("decomposition")
     yield VerificationEvent("step_complete", {"step": "decomposition", "count": len(subclaims), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 2: Entity Resolution ---
+    # --- Stage 2: Entity Resolution (emit from B1 result — no extra LLM call) ---
     yield VerificationEvent("step_start", {"step": "entity_resolution", "label": "Resolving entity references..."})
-    entity_resolution = resolve_entities(claim_text, subclaims, company_ticker=detected_ticker)
+    legacy_er = to_legacy_entity_resolution(entity_intel)
     yield VerificationEvent("entity_resolution", {
-        "entities": entity_resolution.get("entities", []),
-        "resolutions": entity_resolution.get("resolutions", []),
-        "ambiguities": entity_resolution.get("ambiguities", []),
+        "entities": legacy_er.get("entities", []),
+        "resolutions": legacy_er.get("resolutions", []),
+        "ambiguities": legacy_er.get("ambiguities", []),
     })
-    ent_count = len(entity_resolution.get("entities", []))
-    amb_count = len(entity_resolution.get("ambiguities", []))
+    ent_count = len(legacy_er.get("entities", []))
+    amb_count = len(legacy_er.get("ambiguities", []))
     if amb_count > 0:
         yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "entity_resolution", "message": f"Resolved {ent_count} entities — {amb_count} ambiguities flagged", "detail": "Ambiguous references may reduce confidence in downstream matching. Proceeding with best-match resolution."})
     elif ent_count > 0:
-        ent_names = ", ".join(e.get("name", "?") for e in entity_resolution.get("entities", [])[:3])
+        ent_names = ", ".join(e.get("canonical_name", "?") for e in legacy_er.get("entities", [])[:3])
         yield VerificationEvent("agent_reasoning", {"agent": "resolver", "stage": "entity_resolution", "message": f"Resolved {ent_count} entities: {ent_names}", "detail": "All entity references unambiguous. High confidence in downstream source matching."})
-    # If entity resolution found a ticker we didn't have, use it
+    # If entity intel found a ticker we didn't have, use it
     if not detected_ticker:
-        for ent in entity_resolution.get("entities", []):
+        for ent in legacy_er.get("entities", []):
             if ent.get("ticker") and ent.get("type") == "company":
                 detected_ticker = ent["ticker"].upper().strip()
                 break
@@ -2935,15 +2956,39 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         })
     yield VerificationEvent("step_complete", {"step": "numerical_grounding", "count": len(financial_facts), "issues": len(all_doc_issues), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 4: Evidence Retrieval (per sub-claim) ---
+    # ─── B2: Evidence Retrieval via Orchestrator (batched + deduped) ────
     all_evidence: List[Dict] = []
     yield VerificationEvent("step_start", {"step": "evidence_retrieval", "label": "Searching SEC filings, earnings & news..."})
+    metrics.start_stage("evidence_retrieval")
 
+    orchestrator = EvidenceOrchestrator(
+        ttl_cache=_xbrl_cache,
+        metrics=metrics,
+        lookup_xbrl=lookup_xbrl_facts,
+        search_edgar=search_edgar,
+        search_earnings=search_earnings_transcripts,
+        search_news=search_financial_news,
+        search_perplexity=search_perplexity,
+        lookup_fred=lookup_fred_data,
+        lookup_market=lookup_market_data,
+    )
+
+    # Streaming callback: emit SSE event for each evidence item as it arrives
+    def _on_evidence(sc_id: str, ev: Dict):
+        pass  # We emit after gather since generator yield can't be called from callback
+
+    orch_result = orchestrator.gather_evidence(
+        ticker=detected_ticker,
+        subclaims=subclaims,
+        claim_context=claim_text,
+    )
+    all_evidence = orch_result["all_evidence"]
+
+    # Emit SSE events per subclaim
     for sc in subclaims:
+        sc_evidence = orch_result["per_subclaim"].get(sc["id"], [])
         yield VerificationEvent("search_start", {"subclaim_id": sc["id"], "subclaim": sc["text"]})
-        evidence = retrieve_evidence(sc["text"], claim_text, company_ticker=detected_ticker)
-        for ev in evidence:
-            ev["subclaim_id"] = sc["id"]
+        for ev in sc_evidence:
             ev_event: Dict[str, Any] = {
                 "subclaim_id": sc["id"],
                 "id": ev["id"],
@@ -2969,25 +3014,23 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
                 ev_event["xbrl_discrepancy"] = xd.get("discrepancy")
                 ev_event["xbrl_computation"] = xd.get("computation")
             yield VerificationEvent("evidence_found", ev_event)
-        all_evidence.extend(evidence)
-        # Reasoning: summarize what was found for this sub-claim
-        tier_set = set(e.get("tier", "unknown") for e in evidence)
-        xbrl_hits = sum(1 for e in evidence if e.get("xbrl_data"))
+        tier_set = set(e.get("tier", "unknown") for e in sc_evidence)
+        xbrl_hits = sum(1 for e in sc_evidence if e.get("xbrl_data"))
         tier_str = ", ".join(sorted(tier_set)) if tier_set else "none"
-        msg = f"Sub-claim {sc['id']}: {len(evidence)} sources across [{tier_str}]"
+        msg = f"Sub-claim {sc['id']}: {len(sc_evidence)} sources across [{tier_str}]"
         detail = ""
         if xbrl_hits:
             msg += f" — {xbrl_hits} XBRL match(es)"
             detail = "Machine-readable financial data found. Will cross-reference claimed values against filed figures."
-        elif len(evidence) == 0:
+        elif len(sc_evidence) == 0:
             detail = "No authoritative sources located. Sub-claim may be unverifiable or require broader search."
         yield VerificationEvent("agent_reasoning", {"agent": "retriever", "stage": "evidence_retrieval", "message": msg, "detail": detail})
-        yield VerificationEvent("search_complete", {"subclaim_id": sc["id"], "count": len(evidence)})
+        yield VerificationEvent("search_complete", {"subclaim_id": sc["id"], "count": len(sc_evidence)})
 
-    # Overall retrieval summary
     total_tiers = set(e.get("tier", "") for e in all_evidence)
     sec_count = sum(1 for e in all_evidence if e.get("tier", "").startswith("sec") or e.get("filing_type"))
-    yield VerificationEvent("agent_reasoning", {"agent": "retriever", "stage": "evidence_retrieval", "message": f"Retrieval complete: {len(all_evidence)} total sources, {len(total_tiers)} tiers, {sec_count} regulatory filings", "detail": f"Source tiers: {', '.join(sorted(total_tiers))}. Proceeding to quality evaluation."})
+    yield VerificationEvent("agent_reasoning", {"agent": "retriever", "stage": "evidence_retrieval", "message": f"Retrieval complete: {len(all_evidence)} total sources ({orch_result['stats'].get('deduped_count', 0)} deduped), {len(total_tiers)} tiers, {sec_count} regulatory filings", "detail": f"Source tiers: {', '.join(sorted(total_tiers))}. Proceeding to quality evaluation."})
+    metrics.end_stage("evidence_retrieval")
     yield VerificationEvent("step_complete", {"step": "evidence_retrieval", "total_sources": len(all_evidence), "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 4b: Multi-Period XBRL Temporal Analysis ---
@@ -3062,22 +3105,36 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
             })
         yield VerificationEvent("step_complete", {"step": "temporal_xbrl", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 5: Evidence Quality Evaluation ---
+    # ─── B3: Batched Evidence Quality Evaluation (1 LLM call per subclaim) ──
     yield VerificationEvent("step_start", {"step": "evaluation", "label": "Evaluating source quality..."})
-    all_evidence = evaluate_evidence(all_evidence, claim_text)
-    for ev in all_evidence:
-        yield VerificationEvent("evidence_scored", {
-            "id": ev["id"],
-            "quality_score": ev.get("quality_score"),
-            "study_type": ev.get("study_type"),
-            "supports_claim": ev.get("supports_claim"),
-            "assessment": ev.get("assessment", ""),
-        })
-    # Reasoning: evaluation summary
+    metrics.start_stage("evaluation")
+
+    for sc in subclaims:
+        sc_evidence = [e for e in all_evidence if e.get("subclaim_id") == sc["id"]]
+        if not sc_evidence:
+            continue
+        evaluate_evidence_batch(
+            sc["text"],
+            sc_evidence,
+            call_llm=_call_llm,
+            parse_json=_parse_json_from_llm,
+            cache=_xbrl_cache,
+            metrics=metrics,
+        )
+        for ev in sc_evidence:
+            yield VerificationEvent("evidence_scored", {
+                "id": ev["id"],
+                "quality_score": ev.get("quality_score"),
+                "study_type": ev.get("study_type"),
+                "supports_claim": ev.get("supports_claim"),
+                "assessment": ev.get("assessment", ""),
+            })
+
     supporting = [e for e in all_evidence if e.get("supports_claim") == True]
     opposing = [e for e in all_evidence if e.get("supports_claim") == False]
     avg_quality = sum(e.get("quality_score", 0) for e in all_evidence) / max(len(all_evidence), 1)
     yield VerificationEvent("agent_reasoning", {"agent": "evaluator", "stage": "evaluation", "message": f"Quality assessment: {len(supporting)} supporting, {len(opposing)} opposing, avg quality {avg_quality:.0f}/100", "detail": f"{'High-quality opposing evidence detected — contradiction likely.' if opposing and any(e.get('quality_score', 0) > 70 for e in opposing) else 'No high-confidence opposing sources.' if not opposing else 'Opposing sources present but lower quality.'}"})
+    metrics.end_stage("evaluation")
     yield VerificationEvent("step_complete", {"step": "evaluation", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Stage 6: Contradiction Detection ---
@@ -3306,6 +3363,7 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
 
     # --- Done ---
     total_ms = int((time.time() - t0) * 1000)
+    metrics.log_summary()
     yield VerificationEvent("verification_complete", {
         "total_duration_ms": total_ms,
         "total_sources": len(all_evidence),
@@ -3317,4 +3375,5 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         "materiality_level": materiality.get("materiality_level", "medium"),
         "risk_level": risk_signals.get("risk_level", "medium"),
         "authority_conflicts_count": len(authority_conflicts),
+        "pipeline_metrics": metrics.to_dict(),
     })
