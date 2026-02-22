@@ -24,7 +24,7 @@ const TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
 
 const TraceFeed: React.FC<TraceFeedProps> = ({ traceLines, isVerifying, traceRef }) => (
   <div style={{
-    width: '300px', flexShrink: 0, borderLeft: '1px solid #1a1a1a',
+    width: '240px', flexShrink: 0, borderLeft: '1px solid #1a1a1a',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
     backgroundColor: '#050505',
   }}>

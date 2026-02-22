@@ -390,7 +390,7 @@ const SynapsePage: React.FC = () => {
 
       {/* ═══ Header ═══════════════════════════════════════════════════════ */}
       <header style={{
-        padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         borderBottom: '1px solid #1a1a1a', flexShrink: 0, backgroundColor: '#000',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -495,7 +495,7 @@ const SynapsePage: React.FC = () => {
         )}
 
         {/* ─── Center: Verification Detail ──────────────────────────── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <VerificationDetail
             selectedClaim={selectedClaim || null}
             v={v}

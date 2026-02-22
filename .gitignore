@@ -12,3 +12,6 @@ venv/
 
 # Node
 node_modules/
+
+# Local caches
+data/*.db

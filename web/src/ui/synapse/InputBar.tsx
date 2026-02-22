@@ -46,8 +46,8 @@ const InputBar: React.FC<InputBarProps> = ({
     return (
       <>
         <div style={{
-          padding: '6px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
-          display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0a0a0a',
+          padding: '4px 16px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#0a0a0a',
         }}>
           <span style={{ fontSize: '11px', color: '#555' }}>Analyzing:</span>
           <span style={{ fontSize: '11px', color: '#999', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -61,7 +61,7 @@ const InputBar: React.FC<InputBarProps> = ({
 
         {doneClaims > 0 && (
           <div style={{
-            padding: '8px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
+            padding: '4px 16px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
             display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#050505',
           }} className="syn-fade">
             <span className="syn-mono" style={{ fontSize: '10px', color: '#555', fontWeight: 600 }}>

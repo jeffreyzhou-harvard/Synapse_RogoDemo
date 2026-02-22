@@ -39,7 +39,7 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
 
   return (
     <div style={{
-      width: '320px', flexShrink: 0, borderRight: '1px solid #1a1a1a',
+      width: '270px', flexShrink: 0, borderRight: '1px solid #1a1a1a',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Header */}

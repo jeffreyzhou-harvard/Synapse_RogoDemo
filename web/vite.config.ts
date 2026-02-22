@@ -41,7 +41,7 @@ export default defineConfig({
       '/deep-dive': 'http://localhost:4000',
       '/semantic-search': 'http://localhost:4000',
       '/vector': 'http://localhost:4000',
-      '/api': 'http://localhost:8000',
+      '/api': 'http://localhost:4000',
       '/analyze-transcript': 'http://localhost:4000'
     }
   },

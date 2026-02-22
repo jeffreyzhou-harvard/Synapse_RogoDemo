@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   ExtractedClaim, VerificationState, AgentChip,
+  ProvenanceNode, ProvenanceEdge,
 } from './types';
 import {
   VERDICT_COLORS, TIER_LABELS, MUTATION_COLORS,
@@ -97,6 +98,351 @@ const EmptyState: React.FC<{ hasClaims: boolean; isIngesting: boolean; isExtract
   return <div style={{ flex: 1, backgroundColor: '#000' }} />;
 };
 
+/* ═══ Provenance Graph (expandable timeline) ═════════════════════════ */
+
+const SOURCE_ICONS: Record<string, string> = {
+  study: '📄', journalist: '📰', podcast: '🎙️', social: '📱', blog: '💻', claim: '💬',
+  sec_filing: '⚖️', earnings_call: '🎙️', press_release: '📰', analyst_report: '📊', market_data: '📈',
+};
+
+const MUTATION_LABELS: Record<string, { label: string; description: string }> = {
+  none:        { label: 'Faithful', description: 'Claim accurately reflects the original source with no meaningful alteration.' },
+  slight:      { label: 'Minor Drift', description: 'Small wording changes that preserve core meaning but may lose nuance.' },
+  significant: { label: 'Significant Mutation', description: 'Meaning has shifted noticeably — numbers rounded, context dropped, or scope changed.' },
+  severe:      { label: 'Severe Distortion', description: 'The claim materially misrepresents the original source.' },
+};
+
+interface ProvenanceGraphProps {
+  nodes: ProvenanceNode[];
+  edges: ProvenanceEdge[];
+  analysis?: string;
+  isVerifying: boolean;
+}
+
+const ProvenanceGraph: React.FC<ProvenanceGraphProps> = ({ nodes, edges, analysis, isVerifying }) => {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (nodes.length === 0) {
+    return (
+      <div className="syn-fade" style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
+        {isVerifying ? (
+          <div>
+            <div className="syn-spinner" style={{ width: '24px', height: '24px', margin: '0 auto 10px' }} />
+            <div>Tracing claim origins...</div>
+          </div>
+        ) : 'No provenance data yet'}
+      </div>
+    );
+  }
+
+  const expandedNode = expandedId ? nodes.find(n => n.id === expandedId) : null;
+  const expandedMutInfo = expandedNode ? (MUTATION_LABELS[expandedNode.mutation_severity] || MUTATION_LABELS.none) : null;
+  const expandedMutColor = expandedNode ? (MUTATION_COLORS[expandedNode.mutation_severity] || '#94a3b8') : '#555';
+
+  return (
+    <div className="syn-fade">
+      {/* Header */}
+      <div style={{ padding: '12px 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span className="syn-section-header" style={{ letterSpacing: '1px' }}>Claim Origin Timeline</span>
+        <div style={{ flex: 1, height: '1px', background: '#1a1a1a' }} />
+        <span style={{ fontSize: '10px', color: '#444' }}>{nodes.length} sources traced</span>
+      </div>
+
+      {/* Horizontal block timeline */}
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', padding: '28px 12px 20px', display: 'flex', alignItems: 'stretch', gap: '0', minHeight: '240px' }}>
+        {nodes.map((node, i) => {
+          const mutColor = MUTATION_COLORS[node.mutation_severity] || '#94a3b8';
+          const nextNode = nodes[i + 1];
+          const nextColor = nextNode ? (MUTATION_COLORS[nextNode.mutation_severity] || '#94a3b8') : mutColor;
+          const icon = SOURCE_ICONS[node.source_type] || '📋';
+          const isSelected = expandedId === node.id;
+
+          return (
+            <React.Fragment key={node.id}>
+              <div
+                role="button" tabIndex={0}
+                onClick={() => setExpandedId(isSelected ? null : node.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isSelected ? null : node.id); } }}
+                style={{
+                  flexShrink: 0, width: '280px', padding: '16px 18px',
+                  borderRadius: '10px', border: `1px solid ${isSelected ? `${mutColor}60` : `${mutColor}30`}`,
+                  backgroundColor: `${mutColor}${isSelected ? '14' : '08'}`,
+                  animation: `syn-slide-in 0.3s ease ${i * 0.15}s both`,
+                  display: 'flex', flexDirection: 'column', gap: '10px',
+                  cursor: 'pointer', transition: 'all 0.25s ease',
+                  boxShadow: isSelected ? `0 0 24px ${mutColor}20` : 'none',
+                  transform: isSelected ? 'scale(1.03)' : 'scale(1)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>{icon}</span>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: mutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{node.source_type.replace(/_/g, ' ')}</div>
+                    <div style={{ fontSize: '10px', color: '#888' }}>{node.source_name}</div>
+                  </div>
+                  {node.date && <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#555', fontWeight: 600 }}>{node.date}</span>}
+                </div>
+                <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.55, fontStyle: 'italic' }}>"{node.text.length > 120 ? node.text.slice(0, 120) + '...' : node.text}"</div>
+                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: mutColor }} />
+                  <span style={{ fontSize: '9px', fontWeight: 700, color: mutColor, textTransform: 'uppercase' }}>{node.mutation_severity} mutation</span>
+                  <span style={{
+                    marginLeft: 'auto', fontSize: '9px', color: isSelected ? mutColor : '#444',
+                    transition: 'color 0.2s',
+                  }}>
+                    {isSelected ? '▲ collapse' : '▼ details'}
+                  </span>
+                </div>
+              </div>
+              {i < nodes.length - 1 && (
+                <div style={{ flexShrink: 0, width: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: `syn-fade 0.3s ease ${i * 0.15 + 0.1}s both` }}>
+                  <svg width="48" height="24" viewBox="0 0 48 24">
+                    <defs><linearGradient id={`pg-${i}`} x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={mutColor} /><stop offset="100%" stopColor={nextColor} /></linearGradient></defs>
+                    <line x1="4" y1="12" x2="36" y2="12" stroke={`url(#pg-${i})`} strokeWidth="2" />
+                    <polygon points="36,6 44,12 36,18" fill={nextColor} />
+                  </svg>
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* Expanded detail panel (slides in below the timeline) */}
+      {expandedNode && expandedMutInfo && (
+        <div style={{
+          margin: '0 12px 16px', padding: '18px 20px', borderRadius: '12px',
+          border: `1px solid ${expandedMutColor}35`,
+          backgroundColor: `${expandedMutColor}06`,
+          animation: 'syn-slide-in 0.25s ease',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+            {/* Left: full source text */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <span style={{ fontSize: '18px' }}>{SOURCE_ICONS[expandedNode.source_type] || '📋'}</span>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{expandedNode.source_name}</div>
+                  <div style={{ fontSize: '10px', color: '#666', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                    <span>{expandedNode.source_type.replace(/_/g, ' ')}</span>
+                    {expandedNode.date && <span>· {expandedNode.date}</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{
+                padding: '14px 16px', borderRadius: '8px',
+                backgroundColor: '#050505', border: '1px solid #141414',
+              }}>
+                <div className="syn-section-header" style={{ marginBottom: '8px', color: '#555' }}>Full Source Text</div>
+                <div style={{ fontSize: '13px', color: '#ddd', lineHeight: 1.7, fontStyle: 'italic' }}>
+                  "{expandedNode.text}"
+                </div>
+              </div>
+            </div>
+
+            {/* Right: mutation analysis */}
+            <div style={{ width: '260px', flexShrink: 0 }}>
+              <div style={{
+                padding: '14px 16px', borderRadius: '10px',
+                backgroundColor: `${expandedMutColor}0a`, border: `1px solid ${expandedMutColor}25`,
+                marginBottom: '10px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{
+                    width: '12px', height: '12px', borderRadius: '50%', backgroundColor: expandedMutColor,
+                    boxShadow: `0 0 8px ${expandedMutColor}50`,
+                  }} />
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: expandedMutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {expandedMutInfo.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#999', lineHeight: 1.65 }}>
+                  {expandedMutInfo.description}
+                </div>
+              </div>
+
+              {/* Mutation severity scale */}
+              <div style={{
+                padding: '12px 14px', borderRadius: '8px',
+                backgroundColor: '#080808', border: '1px solid #1a1a1a',
+              }}>
+                <div className="syn-section-header" style={{ marginBottom: '8px', color: '#444' }}>Mutation Scale</div>
+                {(['none', 'slight', 'significant', 'severe'] as const).map(sev => {
+                  const c = MUTATION_COLORS[sev] || '#555';
+                  const isActive = expandedNode.mutation_severity === sev;
+                  return (
+                    <div key={sev} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0',
+                      opacity: isActive ? 1 : 0.35,
+                      transition: 'opacity 0.2s',
+                    }}>
+                      <div style={{
+                        width: '8px', height: '8px', borderRadius: '50%', backgroundColor: c,
+                        boxShadow: isActive ? `0 0 6px ${c}60` : 'none',
+                      }} />
+                      <span style={{ fontSize: '10px', fontWeight: isActive ? 800 : 500, color: isActive ? c : '#555', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                        {(MUTATION_LABELS[sev] || { label: sev }).label}
+                      </span>
+                      {isActive && <span style={{ fontSize: '8px', color: c, marginLeft: 'auto' }}>◀</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analysis */}
+      {analysis && (
+        <div style={{ marginTop: '8px', padding: '14px 16px', borderRadius: '10px', backgroundColor: '#080808', border: '1px solid #1a1a1a', fontSize: '13px', color: '#999', lineHeight: 1.65 }}>
+          <span style={{ fontWeight: 700, color: '#fff', marginRight: '6px' }}>Analysis:</span>
+          {analysis}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ═══ Agent Activity Panel (live during verification) ════════════════ */
+
+interface AgentActivityPanelProps {
+  agentChips: AgentChip[];
+  reasoningMessages: ReasoningMessage[];
+  currentStep: string | undefined;
+  stepLabel: string | undefined;
+  pipelineStats: PipelineStats;
+}
+
+const AgentActivityPanel: React.FC<AgentActivityPanelProps> = ({
+  agentChips, reasoningMessages, currentStep, stepLabel, pipelineStats,
+}) => {
+  const activeAgents = agentChips.filter(c => c.status === 'active');
+  const doneAgents = agentChips.filter(c => c.status === 'done');
+  const recentMessages = reasoningMessages.slice(-6);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} className="syn-fade">
+      {/* Current step banner */}
+      {stepLabel && (
+        <div style={{
+          padding: '12px 16px', borderRadius: '10px',
+          border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a',
+          display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <div className="syn-spinner" style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{stepLabel}</div>
+            <div className="syn-mono" style={{ fontSize: '10px', color: '#555', marginTop: '2px' }}>
+              {pipelineStats.sources > 0 ? `${pipelineStats.sources} sources found` : 'Querying data sources...'}
+              {pipelineStats.apiCalls > 0 && ` · ${pipelineStats.apiCalls} API calls`}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active agents grid */}
+      {activeAgents.length > 0 && (
+        <div>
+          <div className="syn-section-header" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="syn-dot-pulse" style={{ width: '5px', height: '5px' }} />
+            Active Agents ({activeAgents.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {activeAgents.map((agent, i) => (
+              <div key={agent.id} style={{
+                padding: '10px 14px', borderRadius: '8px',
+                border: `1px solid ${agent.color}30`,
+                backgroundColor: `${agent.color}08`,
+                display: 'flex', alignItems: 'center', gap: '10px',
+                animation: `syn-slide-in 0.3s ease ${i * 0.05}s both`,
+              }}>
+                <span className="syn-dot-pulse" style={{ width: '7px', height: '7px', backgroundColor: agent.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: agent.color }}>{agent.label}</div>
+                  <div className="syn-mono" style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>{agent.service}</div>
+                </div>
+                <div style={{
+                  padding: '2px 8px', borderRadius: '4px', fontSize: '8px', fontWeight: 700,
+                  backgroundColor: `${agent.color}15`, color: agent.color,
+                  border: `1px solid ${agent.color}25`, textTransform: 'uppercase', letterSpacing: '0.5px',
+                  animation: 'syn-pulse 1.5s ease-in-out infinite',
+                }}>
+                  working
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Live reasoning stream */}
+      {recentMessages.length > 0 && (
+        <div>
+          <div className="syn-section-header" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            Agent Reasoning
+          </div>
+          <div style={{
+            borderRadius: '8px', border: '1px solid #1a1a1a', backgroundColor: '#050505',
+            overflow: 'hidden',
+          }}>
+            {recentMessages.map((msg, i) => {
+              const color = AGENT_COLORS[msg.agent] || '#555';
+              const isLatest = i === recentMessages.length - 1;
+              return (
+                <div key={i} style={{
+                  padding: '8px 14px',
+                  borderBottom: i < recentMessages.length - 1 ? '1px solid #111' : 'none',
+                  opacity: isLatest ? 1 : 0.5 + (i / recentMessages.length) * 0.4,
+                  animation: isLatest ? 'syn-slide-in 0.25s ease' : 'none',
+                  display: 'flex', gap: '10px', alignItems: 'flex-start',
+                }}>
+                  <span style={{
+                    width: '5px', height: '5px', borderRadius: '50%', backgroundColor: color,
+                    flexShrink: 0, marginTop: '5px',
+                    animation: isLatest ? 'syn-pulse 1.2s ease-in-out infinite' : 'none',
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                      <span className="syn-mono" style={{ fontSize: '9px', fontWeight: 700, color, textTransform: 'uppercase' }}>
+                        {msg.agent.replace(/_/g, ' ')}
+                      </span>
+                      <span className="syn-mono" style={{ fontSize: '8px', color: '#333' }}>{msg.stage.replace(/_/g, ' ')}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: isLatest ? '#ccc' : '#777', lineHeight: 1.45 }}>
+                      {msg.message}
+                    </div>
+                    {msg.detail && isLatest && (
+                      <div className="syn-mono" style={{ fontSize: '9px', color: '#444', lineHeight: 1.4, marginTop: '3px' }}>
+                        {msg.detail.slice(0, 200)}{msg.detail.length > 200 ? '...' : ''}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Completed agents summary */}
+      {doneAgents.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {doneAgents.map(agent => (
+            <span key={agent.id} className="syn-mono" style={{
+              fontSize: '9px', fontWeight: 600, padding: '3px 8px', borderRadius: '4px',
+              backgroundColor: `${agent.color}10`, color: `${agent.color}90`,
+              border: `1px solid ${agent.color}20`,
+            }}>
+              ✓ {agent.task}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ═══ Main Component ═══════════════════════════════════════════════════ */
 
 const VerificationDetail: React.FC<VerificationDetailProps> = ({
@@ -116,10 +462,10 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
     : null;
 
   return (
-    <>
-      {/* ═══ Sticky Header: Claim + Verdict ════════════════════════════ */}
-      <div style={{ flexShrink: 0, padding: '16px 20px', borderBottom: '1px solid #1a1a1a', backgroundColor: '#000' }}>
-        <div style={{ fontSize: '14px', color: '#fff', lineHeight: 1.5, fontWeight: 500, marginBottom: '10px' }}>
+    <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* ═══ Claim + Verdict ════════════════════════════════════════ */}
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a', backgroundColor: '#000' }}>
+        <div style={{ fontSize: '13px', color: '#fff', lineHeight: 1.45, fontWeight: 500, marginBottom: '8px' }}>
           "{selectedClaim.original}"
         </div>
 
@@ -129,14 +475,14 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             onClick={() => setVerdictExpanded(!verdictExpanded)}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setVerdictExpanded(!verdictExpanded); }}}
             style={{
-              padding: '12px 16px', borderRadius: '10px',
+              padding: '10px 14px', borderRadius: '8px',
               border: `1px solid ${vc.border}`, backgroundColor: vc.bg,
-              boxShadow: `0 0 20px ${vc.glow}`, animation: 'syn-verdict-pop 0.4s ease',
+              boxShadow: `0 0 16px ${vc.glow}`, animation: 'syn-verdict-pop 0.4s ease',
               cursor: 'pointer', transition: 'all 0.2s',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <span style={{ fontSize: '20px', fontWeight: 900, color: vc.text, textTransform: 'uppercase', letterSpacing: '1.5px', flexShrink: 0 }}>
+              <span style={{ fontSize: '16px', fontWeight: 900, color: vc.text, textTransform: 'uppercase', letterSpacing: '1px', flexShrink: 0 }}>
                 {v.overallVerdict.verdict.replace('_', ' ')}
               </span>
               <span style={{
@@ -380,11 +726,11 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
         )}
       </div>
 
-      {/* ═══ Reasoning Feed ════════════════════════════════════════════ */}
+      {/* ═══ Reasoning Feed ════════════════════════════════════════ */}
       {reasoningMessages.length > 0 && (
         <div style={{
-          flexShrink: 0, borderBottom: '1px solid #1a1a1a', backgroundColor: '#030303',
-          maxHeight: reasoningCollapsed ? '32px' : (selectedClaim.status === 'verifying' ? '280px' : '180px'),
+          borderBottom: '1px solid #1a1a1a', backgroundColor: '#030303',
+          maxHeight: reasoningCollapsed ? '28px' : (selectedClaim.status === 'verifying' ? '160px' : '100px'),
           overflow: 'hidden', transition: 'max-height 0.3s ease',
         }}>
           <div
@@ -393,7 +739,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReasoningCollapsed(!reasoningCollapsed); }}}
             aria-expanded={!reasoningCollapsed}
             style={{
-              display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 20px',
+              display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 16px',
               cursor: 'pointer', borderBottom: reasoningCollapsed ? 'none' : '1px solid #111',
               userSelect: 'none',
             }}
@@ -408,8 +754,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           </div>
           {!reasoningCollapsed && (
             <div ref={reasoningRef} style={{
-              overflow: 'auto', padding: '6px 0',
-              maxHeight: selectedClaim.status === 'verifying' ? '245px' : '145px',
+              overflow: 'auto', padding: '4px 0',
+              maxHeight: selectedClaim.status === 'verifying' ? '128px' : '68px',
             }}>
               {reasoningMessages.map((msg, i) => {
                 const color = AGENT_COLORS[msg.agent] || '#555';
@@ -442,8 +788,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
         </div>
       )}
 
-      {/* ═══ Tab Bar ════════════════════════════════════════════════════ */}
-      <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+      {/* ═══ Tab Bar ════════════════════════════════════════════ */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', borderBottom: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
         {([
           { key: 'subclaims' as const, label: 'Sub-Claims', icon: '🔬', count: v.subclaims.length },
           { key: 'evidence' as const, label: 'Evidence', icon: '📄', count: v.evidence.length },
@@ -470,8 +816,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
         ))}
       </div>
 
-      {/* ═══ Tab Content ═══════════════════════════════════════════════ */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+      {/* ═══ Tab Content ═════════════════════════════════════════ */}
+      <div style={{ padding: '12px 16px' }}>
         {/* Sub-Claims */}
         {activeTab === 'subclaims' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} className="syn-fade">
@@ -500,10 +846,13 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               );
             })}
             {v.subclaims.length === 0 && selectedClaim.status === 'verifying' && (
-              <div style={{ textAlign: 'center', padding: '40px' }}>
-                <div className="syn-spinner" style={{ width: '24px', height: '24px', margin: '0 auto 10px' }} />
-                <div style={{ fontSize: '12px', color: '#fff' }}>Decomposing claim...</div>
-              </div>
+              <AgentActivityPanel
+                agentChips={agentChips}
+                reasoningMessages={reasoningMessages}
+                currentStep={v.currentStep}
+                stepLabel={v.stepLabel}
+                pipelineStats={pipelineStats}
+              />
             )}
           </div>
         )}
@@ -542,8 +891,18 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               </div>
             )}
             {v.evidence.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
-                {selectedClaim.status === 'verifying' ? 'Searching for evidence...' : 'No evidence collected yet'}
+              <div style={{ padding: selectedClaim.status === 'verifying' ? '20px 0' : '40px', textAlign: selectedClaim.status === 'verifying' ? 'left' : 'center' }}>
+                {selectedClaim.status === 'verifying' ? (
+                  <AgentActivityPanel
+                    agentChips={agentChips}
+                    reasoningMessages={reasoningMessages}
+                    currentStep={v.currentStep}
+                    stepLabel={v.stepLabel}
+                    pipelineStats={pipelineStats}
+                  />
+                ) : (
+                  <div style={{ color: '#555', fontSize: '12px' }}>No evidence collected yet</div>
+                )}
               </div>
             )}
           </div>
@@ -700,72 +1059,12 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
 
         {/* Provenance */}
         {activeTab === 'provenance' && (
-          <div className="syn-fade">
-            {v.provenanceNodes.length > 0 ? (
-              <>
-                <div style={{ padding: '12px 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="syn-section-header" style={{ letterSpacing: '1px' }}>Claim Origin Timeline</span>
-                  <div style={{ flex: 1, height: '1px', background: '#1a1a1a' }} />
-                  <span style={{ fontSize: '10px', color: '#444' }}>{v.provenanceNodes.length} sources traced</span>
-                </div>
-                <div style={{ overflowX: 'auto', overflowY: 'hidden', padding: '28px 12px 20px', display: 'flex', alignItems: 'stretch', gap: '0', minHeight: '240px' }}>
-                  {v.provenanceNodes.map((node, i) => {
-                    const mutColor = MUTATION_COLORS[node.mutation_severity] || '#94a3b8';
-                    const nextNode = v.provenanceNodes[i + 1];
-                    const nextColor = nextNode ? (MUTATION_COLORS[nextNode.mutation_severity] || '#94a3b8') : mutColor;
-                    const sourceIcons: Record<string, string> = {
-                      study: '📄', journalist: '📰', podcast: '🎙️', social: '📱', blog: '💻', claim: '💬',
-                      sec_filing: '⚖️', earnings_call: '🎙️', press_release: '📰', analyst_report: '📊', market_data: '📈',
-                    };
-                    return (
-                      <React.Fragment key={node.id}>
-                        <div style={{
-                          flexShrink: 0, width: '280px', padding: '16px 18px',
-                          borderRadius: '10px', border: `1px solid ${mutColor}30`,
-                          backgroundColor: `${mutColor}08`,
-                          animation: `syn-slide-in 0.3s ease ${i * 0.15}s both`,
-                          display: 'flex', flexDirection: 'column', gap: '10px',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '16px' }}>{sourceIcons[node.source_type] || '📋'}</span>
-                            <div>
-                              <div style={{ fontSize: '11px', fontWeight: 700, color: mutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{node.source_type.replace(/_/g, ' ')}</div>
-                              <div style={{ fontSize: '10px', color: '#888' }}>{node.source_name}</div>
-                            </div>
-                            {node.date && <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#555', fontWeight: 600 }}>{node.date}</span>}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.55, fontStyle: 'italic' }}>"{node.text}"</div>
-                          <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: mutColor }} />
-                            <span style={{ fontSize: '9px', fontWeight: 700, color: mutColor, textTransform: 'uppercase' }}>{node.mutation_severity} mutation</span>
-                          </div>
-                        </div>
-                        {i < v.provenanceNodes.length - 1 && (
-                          <div style={{ flexShrink: 0, width: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: `syn-fade 0.3s ease ${i * 0.15 + 0.1}s both` }}>
-                            <svg width="48" height="24" viewBox="0 0 48 24">
-                              <defs><linearGradient id={`pg-${i}`} x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={mutColor} /><stop offset="100%" stopColor={nextColor} /></linearGradient></defs>
-                              <line x1="4" y1="12" x2="36" y2="12" stroke={`url(#pg-${i})`} strokeWidth="2" />
-                              <polygon points="36,6 44,12 36,18" fill={nextColor} />
-                            </svg>
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-                {v.provenanceAnalysis && (
-                  <div style={{ marginTop: '8px', padding: '14px 16px', borderRadius: '10px', backgroundColor: '#080808', border: '1px solid #1a1a1a', fontSize: '13px', color: '#999', lineHeight: 1.65 }}>
-                    <span style={{ fontWeight: 700, color: '#fff', marginRight: '6px' }}>Analysis:</span>
-                    {v.provenanceAnalysis}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
-                {selectedClaim.status === 'verifying' ? 'Tracing claim origins...' : 'No provenance data yet'}
-              </div>
-            )}
-          </div>
+          <ProvenanceGraph
+            nodes={v.provenanceNodes}
+            edges={v.provenanceEdges}
+            analysis={v.provenanceAnalysis}
+            isVerifying={selectedClaim.status === 'verifying'}
+          />
         )}
 
         {/* Correction */}
@@ -894,7 +1193,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 };
 
