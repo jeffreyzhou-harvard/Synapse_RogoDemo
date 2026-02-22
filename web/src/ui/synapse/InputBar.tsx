@@ -60,11 +60,11 @@ const InputBar: React.FC<InputBarProps> = ({
     return (
       <>
         <div style={{
-          padding: '6px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
-          display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0a0a0a',
+          padding: '6px 24px', borderBottom: '1px solid var(--syn-border)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: 'var(--syn-bg-raised)',
         }}>
-          <span style={{ fontSize: '11px', color: '#555' }}>Analyzing:</span>
-          <span style={{ fontSize: '11px', color: '#999', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '11px', color: 'var(--syn-text-muted)' }}>Analyzing:</span>
+          <span style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {ingestedTitle || inputRef.slice(0, 80)}
           </span>
           <button className="syn-btn-ghost" onClick={onNewAnalysis}
@@ -75,10 +75,10 @@ const InputBar: React.FC<InputBarProps> = ({
 
         {doneClaims > 0 && (
           <div style={{
-            padding: '8px 24px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
-            display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#050505',
+            padding: '8px 24px', borderBottom: '1px solid var(--syn-border)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--syn-bg-sunken)',
           }} className="syn-fade">
-            <span className="syn-mono" style={{ fontSize: '10px', color: '#555', fontWeight: 600 }}>
+            <span className="syn-mono" style={{ fontSize: '10px', color: 'var(--syn-text-muted)', fontWeight: 600 }}>
               {doneClaims} claims · {pipelineStats.apiCalls} API calls · {pipelineStats.services.size} services
               {pipelineStats.durationMs > 0 && ` · ${(pipelineStats.durationMs / 1000).toFixed(0)}s`}
             </span>
@@ -114,7 +114,7 @@ const InputBar: React.FC<InputBarProps> = ({
   return (
     <div style={{
       padding: hasClaims ? '12px 24px' : '24px 32px',
-      borderBottom: '1px solid #1a1a1a', background: '#000',
+      borderBottom: '1px solid var(--syn-border)', background: 'var(--syn-bg)',
       transition: 'padding 0.3s ease', flexShrink: 0,
     }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
@@ -122,11 +122,11 @@ const InputBar: React.FC<InputBarProps> = ({
           <div style={{ marginBottom: '24px' }} className="syn-fade">
             {/* Hero */}
             <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-              <h1 style={{ fontSize: '28px', fontWeight: 300, color: '#fff', marginBottom: '12px', letterSpacing: '-0.3px', lineHeight: 1.35 }}>
+              <h1 style={{ fontSize: '28px', fontWeight: 300, color: 'var(--syn-text-heading)', marginBottom: '12px', letterSpacing: '-0.3px', lineHeight: 1.35 }}>
                 Independent verification for every<br />
                 claim in financial AI output
               </h1>
-              <p style={{ fontSize: '13px', color: '#555', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7, fontWeight: 400 }}>
+              <p style={{ fontSize: '13px', color: 'var(--syn-text-muted)', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7, fontWeight: 400 }}>
                 12-stage pipeline. Entity resolution. Financial normalization.
                 Peer benchmarking. Materiality scoring. Risk signal extraction.
               </p>
@@ -152,12 +152,12 @@ const InputBar: React.FC<InputBarProps> = ({
                       ].map((step, i) => (
                         <React.Fragment key={`${dup}-${step}`}>
                           <span style={{
-                            fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '0.5px',
-                            padding: '4px 10px', borderRadius: '4px', border: '1px solid #1a1a1a',
-                            backgroundColor: '#080808', flexShrink: 0,
+                            fontSize: '9px', fontWeight: 600, color: 'var(--syn-text-muted)', letterSpacing: '0.5px',
+                            padding: '4px 10px', borderRadius: '4px', border: '1px solid var(--syn-border)',
+                            backgroundColor: 'var(--syn-bg-input)', flexShrink: 0,
                           }}>{step}</span>
                           {(i < 11 || dup === 0) && (
-                            <span style={{ color: '#222', fontSize: '8px', flexShrink: 0 }}>→</span>
+                            <span style={{ color: 'var(--syn-text-ghost)', fontSize: '8px', flexShrink: 0 }}>→</span>
                           )}
                         </React.Fragment>
                       ))}
@@ -178,7 +178,7 @@ const InputBar: React.FC<InputBarProps> = ({
                         'Citation Verification', 'Risk Signals',
                       ].map(label => (
                         <span key={`${dup}-${label}`} style={{
-                          fontSize: '8px', color: '#333', letterSpacing: '0.3px', flexShrink: 0,
+                          fontSize: '8px', color: 'var(--syn-text-ghost)', letterSpacing: '0.3px', flexShrink: 0,
                         }}>{label}</span>
                       ))}
                     </React.Fragment>
@@ -240,21 +240,21 @@ const InputBar: React.FC<InputBarProps> = ({
               <div className="syn-section-header" style={{ marginBottom: '8px', letterSpacing: '1.5px' }}>
                 Sample verifications
               </div>
-              <div style={{ border: '1px solid #141414', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--syn-border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
                 {PRELOADED_EXAMPLES.map((ex, i) => {
                   const statusColor = ex.verdict === 'supported' ? '#6fad8e'
                     : ex.verdict === 'contradicted' ? '#c47070'
-                    : ex.verdict === 'mixed' ? '#888' : '#666';
+                    : ex.verdict === 'mixed' ? 'var(--syn-text-tertiary)' : 'var(--syn-text-tertiary)';
                   return (
                     <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}
                       className="syn-example-row"
-                      style={{ borderBottom: i < PRELOADED_EXAMPLES.length - 1 ? '1px solid #111' : 'none' }}
+                      style={{ borderBottom: i < PRELOADED_EXAMPLES.length - 1 ? '1px solid var(--syn-border-subtle)' : 'none' }}
                     >
                       <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: statusColor, flexShrink: 0, opacity: 0.8 }} />
-                      <div style={{ flex: 1, fontSize: '11px', color: '#777', lineHeight: 1.4, minWidth: 0 }}>
+                      <div style={{ flex: 1, fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.4, minWidth: 0 }}>
                         {ex.claim}
                       </div>
-                      <div className="syn-mono" style={{ fontSize: '8px', fontWeight: 700, color: '#444', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0 }}>
+                      <div className="syn-mono" style={{ fontSize: '8px', fontWeight: 700, color: 'var(--syn-text-dim)', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0 }}>
                         {ex.tag}
                       </div>
                     </button>
@@ -275,9 +275,9 @@ const InputBar: React.FC<InputBarProps> = ({
                   style={{
                     flex: 1, padding: '6px 10px',
                     borderRadius: idx === 0 ? '2px 0 0 0' : '0 0 0 2px',
-                    borderColor: inputMode === mode ? '#fff' : '#1a1a1a',
+                    borderColor: inputMode === mode ? 'var(--syn-text-heading)' : 'var(--syn-border)',
                     backgroundColor: inputMode === mode ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    color: inputMode === mode ? '#fff' : '#555',
+                    color: inputMode === mode ? 'var(--syn-text-heading)' : 'var(--syn-text-muted)',
                   }}>
                   {mode.toUpperCase()}
                 </button>
@@ -288,14 +288,14 @@ const InputBar: React.FC<InputBarProps> = ({
                 onKeyDown={e => e.key === 'Enter' && onIngest()}
                 placeholder="Paste a URL..."
                 className="syn-input syn-mono"
-                style={{ padding: '10px 14px', borderRadius: '0', color: '#fff', fontSize: '13px' }}
+                style={{ padding: '10px 14px', borderRadius: '0', color: 'var(--syn-text-heading)', fontSize: '13px' }}
               />
             ) : (
               <textarea value={inputValue} onChange={e => setInputValue(e.target.value)}
                 placeholder="Paste text containing claims..."
                 rows={2}
                 className="syn-textarea"
-                style={{ padding: '10px 14px', borderRadius: '0', color: '#fff', fontSize: '13px' }}
+                style={{ padding: '10px 14px', borderRadius: '0', color: 'var(--syn-text-heading)', fontSize: '13px' }}
               />
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>

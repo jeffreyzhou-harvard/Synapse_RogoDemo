@@ -54,8 +54,8 @@ const EmptyState: React.FC<{ hasClaims: boolean; isIngesting: boolean; isExtract
     return (
       <div className="syn-empty-state">
         <div className="syn-spinner" style={{ width: '28px', height: '28px', marginBottom: '16px' }} />
-        <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600, marginBottom: '6px' }}>Fetching & analyzing content...</div>
-        <div style={{ fontSize: '12px', color: '#555', maxWidth: '340px', lineHeight: 1.6 }}>
+        <div style={{ fontSize: '14px', color: 'var(--syn-text-heading)', fontWeight: 600, marginBottom: '6px' }}>Fetching & analyzing content...</div>
+        <div style={{ fontSize: '12px', color: 'var(--syn-text-muted)', maxWidth: '340px', lineHeight: 1.6 }}>
           Extracting main content, identifying claim-dense passages, and preparing for verification.
         </div>
       </div>
@@ -65,8 +65,8 @@ const EmptyState: React.FC<{ hasClaims: boolean; isIngesting: boolean; isExtract
     return (
       <div className="syn-empty-state">
         <div className="syn-spinner" style={{ width: '28px', height: '28px', marginBottom: '16px' }} />
-        <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600, marginBottom: '6px' }}>Extracting verifiable claims...</div>
-        <div style={{ fontSize: '12px', color: '#555', maxWidth: '340px', lineHeight: 1.6 }}>
+        <div style={{ fontSize: '14px', color: 'var(--syn-text-heading)', fontWeight: 600, marginBottom: '6px' }}>Extracting verifiable claims...</div>
+        <div style={{ fontSize: '12px', color: 'var(--syn-text-muted)', maxWidth: '340px', lineHeight: 1.6 }}>
           Chunking document, scoring passages, and identifying discrete factual assertions.
         </div>
         {/* Skeleton cards */}
@@ -85,16 +85,16 @@ const EmptyState: React.FC<{ hasClaims: boolean; isIngesting: boolean; isExtract
     return (
       <div className="syn-empty-state">
         <div style={{ fontSize: '32px', marginBottom: '16px', opacity: 0.3 }}>←</div>
-        <div style={{ fontSize: '14px', color: '#666', fontWeight: 500, marginBottom: '6px' }}>
+        <div style={{ fontSize: '14px', color: 'var(--syn-text-tertiary)', fontWeight: 500, marginBottom: '6px' }}>
           Select a claim to view verification details
         </div>
-        <div style={{ fontSize: '12px', color: '#444', maxWidth: '300px', lineHeight: 1.6 }}>
+        <div style={{ fontSize: '12px', color: 'var(--syn-text-dim)', maxWidth: '300px', lineHeight: 1.6 }}>
           Click any claim in the sidebar, or press "Verify All" to analyze every extracted claim simultaneously.
         </div>
       </div>
     );
   }
-  return <div style={{ flex: 1, backgroundColor: '#000' }} />;
+  return <div style={{ flex: 1, backgroundColor: 'var(--syn-bg)' }} />;
 };
 
 /* ═══ Main Component ═══════════════════════════════════════════════════ */
@@ -118,8 +118,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
   return (
     <>
       {/* ═══ Sticky Header: Claim + Verdict ════════════════════════════ */}
-      <div style={{ flexShrink: 0, padding: '16px 20px', borderBottom: '1px solid #1a1a1a', backgroundColor: '#000' }}>
-        <div style={{ fontSize: '14px', color: '#fff', lineHeight: 1.5, fontWeight: 500, marginBottom: '10px' }}>
+      <div style={{ flexShrink: 0, padding: '16px 20px', borderBottom: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg)' }}>
+        <div style={{ fontSize: '14px', color: 'var(--syn-text-heading)', lineHeight: 1.5, fontWeight: 500, marginBottom: '10px' }}>
           "{selectedClaim.original}"
         </div>
 
@@ -143,27 +143,27 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 fontSize: '10px', fontWeight: 700,
                 color: v.overallVerdict.confidence_score != null
                   ? (v.overallVerdict.confidence_score >= 70 ? '#6fad8e' : v.overallVerdict.confidence_score >= 40 ? '#c4a35a' : '#c47070')
-                  : '#777',
+                  : 'var(--syn-text-tertiary)',
                 textTransform: 'uppercase', padding: '2px 8px', borderRadius: '4px',
-                border: '1px solid #333', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px',
+                border: '1px solid var(--syn-border-strong)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px',
               }}>
                 {v.overallVerdict.confidence_score != null && (
                   <span style={{ fontWeight: 900, fontSize: '11px' }}>{v.overallVerdict.confidence_score}</span>
                 )}
                 {v.overallVerdict.confidence}
               </span>
-              <span style={{ fontSize: '12px', color: '#ccc', flex: 1 }}>
+              <span style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', flex: 1 }}>
                 {!verdictExpanded && v.overallVerdict.summary.length > 120
                   ? v.overallVerdict.summary.slice(0, 120) + '...'
                   : v.overallVerdict.summary}
               </span>
-              <span style={{ fontSize: '10px', color: '#555', flexShrink: 0, transition: 'transform 0.2s', transform: verdictExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+              <span style={{ fontSize: '10px', color: 'var(--syn-text-muted)', flexShrink: 0, transition: 'transform 0.2s', transform: verdictExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
             </div>
 
             {verdictExpanded && (
               <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${vc.border}` }} className="syn-fade">
                 {v.overallVerdict.detail && (
-                  <div style={{ fontSize: '12px', color: '#aaa', lineHeight: 1.6, marginBottom: '12px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--syn-text-tertiary)', lineHeight: 1.6, marginBottom: '12px' }}>
                     {v.overallVerdict.detail}
                   </div>
                 )}
@@ -180,12 +180,12 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                       <div className="syn-section-header" style={{ marginBottom: '2px' }}>Calibrated Confidence Breakdown</div>
                       {bars.map(b => (
                         <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '10px', color: '#888', width: '70px', flexShrink: 0, textAlign: 'right' }}>{b.label}</span>
+                          <span style={{ fontSize: '10px', color: 'var(--syn-text-tertiary)', width: '70px', flexShrink: 0, textAlign: 'right' }}>{b.label}</span>
                           <div style={{ flex: 1, height: '6px', backgroundColor: '#1a1a1a', borderRadius: '3px', overflow: 'hidden' }}>
                             <div style={{ width: `${b.score}%`, height: '100%', backgroundColor: b.color, borderRadius: '3px', transition: 'width 0.5s ease' }} />
                           </div>
                           <span style={{ fontSize: '10px', fontWeight: 700, color: b.color, width: '28px', textAlign: 'right', flexShrink: 0 }}>{b.score}</span>
-                          <span style={{ fontSize: '9px', color: '#555', width: '160px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.detail}</span>
+                          <span style={{ fontSize: '9px', color: 'var(--syn-text-muted)', width: '160px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.detail}</span>
                         </div>
                       ))}
                     </div>
@@ -194,19 +194,19 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 {v.reconciliation && (
                   <div style={{
                     marginTop: '12px', padding: '10px 14px', borderRadius: '8px',
-                    border: `1px solid ${v.reconciliation.accuracy_level === 'true' || v.reconciliation.accuracy_level === 'essentially_true' ? '#1a2a22' : '#2a2018'}`,
-                    backgroundColor: v.reconciliation.accuracy_level === 'true' || v.reconciliation.accuracy_level === 'essentially_true' ? '#0d1410' : '#14110e',
+                    border: `1px solid ${v.reconciliation.accuracy_level === 'true' || v.reconciliation.accuracy_level === 'essentially_true' ? 'var(--syn-green-border)' : 'var(--syn-orange-border)'}`,
+                    backgroundColor: v.reconciliation.accuracy_level === 'true' || v.reconciliation.accuracy_level === 'essentially_true' ? 'var(--syn-green-bg)' : 'var(--syn-orange-bg)',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                       <span className="syn-section-header">Final Assessment</span>
                       {v.overallVerdict?.reconciled && (
-                        <span style={{ fontSize: '8px', fontWeight: 700, padding: '1px 6px', borderRadius: '3px', backgroundColor: '#0d1410', color: '#6fad8e', border: '1px solid #1a2a22' }}>RECONCILED</span>
+                        <span style={{ fontSize: '8px', fontWeight: 700, padding: '1px 6px', borderRadius: '3px', backgroundColor: 'var(--syn-green-bg)', color: '#6fad8e', border: '1px solid var(--syn-green-border)' }}>RECONCILED</span>
                       )}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6 }}>{v.reconciliation.explanation}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.6 }}>{v.reconciliation.explanation}</div>
                     {v.reconciliation.detail_added && (
-                      <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5, marginTop: '6px' }}>
-                        <span style={{ fontWeight: 600, color: '#999' }}>Added detail:</span> {v.reconciliation.detail_added}
+                      <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5, marginTop: '6px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--syn-text-tertiary)' }}>Added detail:</span> {v.reconciliation.detail_added}
                       </div>
                     )}
                   </div>
@@ -219,15 +219,15 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           <div>
             {/* Current stage banner */}
             {v.currentStep && (
-              <div style={{ marginBottom: '10px', padding: '10px 14px', borderRadius: '8px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a' }}>
+              <div style={{ marginBottom: '10px', padding: '10px 14px', borderRadius: '8px', backgroundColor: 'var(--syn-bg-raised)', border: '1px solid var(--syn-border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className="syn-dot-pulse" style={{ width: '6px', height: '6px' }} />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', textTransform: 'capitalize' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--syn-text-heading)', textTransform: 'capitalize' }}>
                       {v.stepLabel || v.currentStep.replace(/_/g, ' ')}
                     </span>
                   </div>
-                  <span className="syn-mono" style={{ fontSize: '10px', color: '#555' }}>
+                  <span className="syn-mono" style={{ fontSize: '10px', color: 'var(--syn-text-muted)' }}>
                     Stage {v.completedSteps.length + 1} of 13
                   </span>
                 </div>
@@ -248,9 +248,9 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 <div key={step} style={{
                   padding: '3px 8px', borderRadius: '5px', fontSize: '9px', fontWeight: 600,
                   border: '1px solid',
-                  borderColor: isDone ? '#1a2a22' : isCurrent ? '#2a2a2a' : '#1a1a1a',
-                  backgroundColor: isDone ? '#0d1410' : isCurrent ? '#111' : 'transparent',
-                  color: isDone ? '#6fad8e' : isCurrent ? '#ccc' : '#444',
+                  borderColor: isDone ? 'var(--syn-green-border)' : isCurrent ? 'var(--syn-border-hover)' : 'var(--syn-border)',
+                  backgroundColor: isDone ? 'var(--syn-green-bg)' : isCurrent ? 'var(--syn-bg-hover)' : 'transparent',
+                  color: isDone ? '#6fad8e' : isCurrent ? 'var(--syn-text-secondary)' : 'var(--syn-text-dim)',
                   display: 'flex', alignItems: 'center', gap: '3px', transition: 'all 0.3s',
                 }}>
                   {isCurrent && <span className="syn-dot-pulse" style={{ width: '5px', height: '5px' }} />}
@@ -275,9 +275,9 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                   <div style={{
                     padding: '3px 8px', borderRadius: '5px', fontSize: '9px', fontWeight: 700,
                     display: 'flex', alignItems: 'center', gap: '4px',
-                    border: `1px solid ${isDone ? `${chip.color}50` : isActive ? chip.color : '#1a1a1a'}`,
+                    border: `1px solid ${isDone ? `${chip.color}50` : isActive ? chip.color : 'var(--syn-border)'}`,
                     backgroundColor: isDone ? `${chip.color}15` : isActive ? `${chip.color}20` : 'transparent',
-                    color: isDone ? chip.color : isActive ? chip.color : '#444',
+                    color: isDone ? chip.color : isActive ? chip.color : 'var(--syn-text-dim)',
                     opacity: isPending ? 0.35 : isDone ? 0.75 : 1,
                     transition: 'all 0.3s ease',
                     animation: isActive ? 'syn-agent-pulse 1.5s ease-in-out infinite' : 'none',
@@ -287,7 +287,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                     {isActive && <span className="syn-dot-pulse" style={{ width: '5px', height: '5px', backgroundColor: chip.color }} />}
                     {chip.label}
                   </div>
-                  {i < agentChips.length - 1 && <span style={{ fontSize: '8px', color: '#333' }}>→</span>}
+                  {i < agentChips.length - 1 && <span style={{ fontSize: '8px', color: 'var(--syn-text-ghost)' }}>→</span>}
                 </React.Fragment>
               );
             })}
@@ -297,19 +297,19 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
         {/* Pipeline Stats */}
         {(pipelineStats.steps > 0 || pipelineStats.durationMs > 0) && (
           <div className="syn-mono syn-fade" style={{
-            marginTop: '8px', fontSize: '9px', color: '#555', fontWeight: 600,
+            marginTop: '8px', fontSize: '9px', color: 'var(--syn-text-muted)', fontWeight: 600,
             display: 'flex', gap: '10px', flexWrap: 'wrap',
           }}>
             <span>{pipelineStats.steps} agent steps</span>
-            <span style={{ color: '#333' }}>·</span>
+            <span style={{ color: 'var(--syn-text-ghost)' }}>·</span>
             <span>{pipelineStats.apiCalls} API calls</span>
-            <span style={{ color: '#333' }}>·</span>
+            <span style={{ color: 'var(--syn-text-ghost)' }}>·</span>
             <span>{pipelineStats.services.size} services</span>
-            <span style={{ color: '#333' }}>·</span>
+            <span style={{ color: 'var(--syn-text-ghost)' }}>·</span>
             <span>{pipelineStats.sources} sources evaluated</span>
             {pipelineStats.durationMs > 0 && (
               <>
-                <span style={{ color: '#333' }}>·</span>
+                <span style={{ color: 'var(--syn-text-ghost)' }}>·</span>
                 <span>{(pipelineStats.durationMs / 1000).toFixed(1)}s</span>
               </>
             )}
@@ -320,7 +320,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
         {v.overallVerdict && (
           <div style={{
             marginTop: '10px', padding: '10px 14px', borderRadius: '8px',
-            border: '1px solid #1a1a1a', backgroundColor: '#050505',
+            border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-sunken)',
             display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center',
           }} className="syn-fade">
             <span className="syn-section-header" style={{ marginRight: '4px' }}>Actions</span>
@@ -408,7 +408,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
       {/* ═══ Reasoning Feed ════════════════════════════════════════════ */}
       {reasoningMessages.length > 0 && (
         <div style={{
-          flexShrink: 0, borderBottom: '1px solid #1a1a1a', backgroundColor: '#030303',
+          flexShrink: 0, borderBottom: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-sunken)',
           maxHeight: reasoningCollapsed ? '32px' : (selectedClaim.status === 'verifying' ? '280px' : '180px'),
           overflow: 'hidden', transition: 'max-height 0.3s ease',
         }}>
@@ -419,17 +419,17 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             aria-expanded={!reasoningCollapsed}
             style={{
               display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 20px',
-              cursor: 'pointer', borderBottom: reasoningCollapsed ? 'none' : '1px solid #111',
+              cursor: 'pointer', borderBottom: reasoningCollapsed ? 'none' : '1px solid var(--syn-border-subtle)',
               userSelect: 'none',
             }}
           >
             <span className={selectedClaim.status === 'verifying' ? 'syn-dot-pulse' : undefined}
-              style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: selectedClaim.status === 'verifying' ? '#fff' : '#333' }} />
-            <span className="syn-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#444', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+              style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: selectedClaim.status === 'verifying' ? 'var(--syn-text-heading)' : '#333' }} />
+            <span className="syn-mono" style={{ fontSize: '9px', fontWeight: 700, color: 'var(--syn-text-dim)', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
               REASONING TRACE
             </span>
-            <span className="syn-mono" style={{ fontSize: '9px', color: '#333' }}>{reasoningMessages.length}</span>
-            <span style={{ marginLeft: 'auto', fontSize: '8px', color: '#333', transform: reasoningCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>▼</span>
+            <span className="syn-mono" style={{ fontSize: '9px', color: 'var(--syn-text-ghost)' }}>{reasoningMessages.length}</span>
+            <span style={{ marginLeft: 'auto', fontSize: '8px', color: 'var(--syn-text-ghost)', transform: reasoningCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>▼</span>
           </div>
           {!reasoningCollapsed && (
             <div ref={reasoningRef} style={{
@@ -445,16 +445,16 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                     opacity: isLatest ? 1 : 0.65,
                     animation: isLatest ? 'syn-fade 0.3s ease' : 'none',
                   }}>
-                    <span className="syn-mono" style={{ fontSize: '8px', color: '#222', minWidth: '32px', flexShrink: 0, paddingTop: '2px', textAlign: 'right' }}>
+                    <span className="syn-mono" style={{ fontSize: '8px', color: 'var(--syn-text-ghost)', minWidth: '32px', flexShrink: 0, paddingTop: '2px', textAlign: 'right' }}>
                       {new Date(msg.ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
                     <span className="syn-mono" style={{ fontSize: '8px', fontWeight: 700, color, minWidth: '80px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.3px', paddingTop: '2px' }}>
                       {msg.agent.replace(/_/g, ' ').slice(0, 12)}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="syn-mono" style={{ fontSize: '10px', color: '#999', lineHeight: 1.4, wordBreak: 'break-word' }}>{msg.message}</div>
+                      <div className="syn-mono" style={{ fontSize: '10px', color: 'var(--syn-text-tertiary)', lineHeight: 1.4, wordBreak: 'break-word' }}>{msg.message}</div>
                       {msg.detail && (
-                        <div className="syn-mono" style={{ fontSize: '9px', color: '#444', lineHeight: 1.4, marginTop: '1px', wordBreak: 'break-word' }}>
+                        <div className="syn-mono" style={{ fontSize: '9px', color: 'var(--syn-text-dim)', lineHeight: 1.4, marginTop: '1px', wordBreak: 'break-word' }}>
                           {msg.detail.slice(0, 180)}{msg.detail.length > 180 ? '...' : ''}
                         </div>
                       )}
@@ -468,7 +468,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
       )}
 
       {/* ═══ Tab Bar ════════════════════════════════════════════════════ */}
-      <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+      <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)' }}>
         {([
           { key: 'subclaims' as const, label: 'Sub-Claims', icon: '🔬', count: v.subclaims.length },
           { key: 'evidence' as const, label: 'Evidence', icon: '📄', count: v.evidence.length },
@@ -487,8 +487,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             {tab.count > 0 && (
               <span style={{
                 fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '3px',
-                backgroundColor: activeTab === tab.key ? 'rgba(255,255,255,0.1)' : '#1a1a1a',
-                color: activeTab === tab.key ? '#fff' : '#444',
+                backgroundColor: activeTab === tab.key ? 'var(--syn-bg-hover)' : '#1a1a1a',
+                color: activeTab === tab.key ? 'var(--syn-text-heading)' : 'var(--syn-text-dim)',
               }}>{tab.count}</span>
             )}
           </button>
@@ -506,20 +506,20 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 <div key={sc.id} style={{
                   padding: '14px 16px', borderRadius: '10px',
                   borderLeft: `3px solid ${scColor?.text || '#444'}`,
-                  border: `1px solid ${scColor?.border || '#1a1a1a'}`,
+                  border: `1px solid ${scColor?.border || 'var(--syn-border)'}`,
                   borderLeftWidth: '3px', borderLeftColor: scColor?.text || '#444',
-                  backgroundColor: scColor?.bg || '#0a0a0a',
+                  backgroundColor: scColor?.bg || 'var(--syn-bg-raised)',
                   animation: `syn-slide-in 0.3s ease ${i * 0.08}s both`,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: scColor?.text || '#444', animation: !sc.verdict ? 'syn-pulse 1.2s ease-in-out infinite' : 'none' }} />
-                    <span style={{ fontSize: '10px', fontWeight: 600, color: '#555', textTransform: 'uppercase' }}>{sc.type}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--syn-text-muted)', textTransform: 'uppercase' }}>{sc.type}</span>
                     {sc.verdict && <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 800, color: scColor?.text, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{sc.verdict.replace('_', ' ')}</span>}
-                    {sc.confidence && <span style={{ fontSize: '9px', color: '#555', fontWeight: 600 }}>{sc.confidence}</span>}
+                    {sc.confidence && <span style={{ fontSize: '9px', color: 'var(--syn-text-muted)', fontWeight: 600 }}>{sc.confidence}</span>}
                   </div>
-                  <div style={{ fontSize: '13px', color: '#ddd', lineHeight: 1.55 }}>{sc.text}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--syn-text-secondary)', lineHeight: 1.55 }}>{sc.text}</div>
                   {sc.summary && (
-                    <div style={{ fontSize: '11px', color: '#888', marginTop: '6px', lineHeight: 1.5, paddingTop: '6px', borderTop: '1px solid #1a1a1a' }}>{sc.summary}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', marginTop: '6px', lineHeight: 1.5, paddingTop: '6px', borderTop: '1px solid var(--syn-border)' }}>{sc.summary}</div>
                   )}
                 </div>
               );
@@ -527,16 +527,16 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             {v.subclaims.length === 0 && selectedClaim.status === 'verifying' && (
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div className="syn-spinner" style={{ width: '24px', height: '24px', margin: '0 auto 10px' }} />
-                <div style={{ fontSize: '12px', color: '#fff', marginBottom: '6px' }}>Decomposing claim into atomic sub-claims...</div>
-                <div style={{ fontSize: '10px', color: '#555', maxWidth: '300px', margin: '0 auto', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '12px', color: 'var(--syn-text-heading)', marginBottom: '6px' }}>Decomposing claim into atomic sub-claims...</div>
+                <div style={{ fontSize: '10px', color: 'var(--syn-text-muted)', maxWidth: '300px', margin: '0 auto', lineHeight: 1.5 }}>
                   Breaking down the claim into independently verifiable assertions
                 </div>
               </div>
             )}
             {v.subclaims.length > 0 && selectedClaim.status === 'verifying' && !v.subclaims.every(sc => sc.verdict) && (
-              <div style={{ padding: '10px 14px', marginBottom: '8px', borderRadius: '8px', border: '1px solid #1a1a1a', backgroundColor: '#050505', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ padding: '10px 14px', marginBottom: '8px', borderRadius: '8px', border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-sunken)', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span className="syn-dot-pulse" />
-                <span style={{ fontSize: '11px', color: '#888' }}>
+                <span style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)' }}>
                   {v.completedSteps.includes('evaluation')
                     ? `Synthesizing verdicts — ${v.subclaims.filter(sc => sc.verdict).length}/${v.subclaims.length} complete`
                     : v.completedSteps.includes('evidence_retrieval')
@@ -552,7 +552,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                     transition: 'width 0.5s ease',
                   }} />
                 </div>
-                <span className="syn-mono" style={{ fontSize: '9px', color: '#444' }}>
+                <span className="syn-mono" style={{ fontSize: '9px', color: 'var(--syn-text-dim)' }}>
                   {v.completedSteps.length}/13
                 </span>
               </div>
@@ -569,7 +569,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               const scColor = sc.verdict ? (VERDICT_COLORS[sc.verdict] || VERDICT_COLORS.unsupported) : null;
               return (
                 <div key={sc.id} style={{ marginBottom: '20px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: scColor?.text || '#888', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: scColor?.text || 'var(--syn-text-tertiary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: scColor?.text || '#444' }} />
                     {sc.text.slice(0, 80)}{sc.text.length > 80 ? '...' : ''}
                   </div>
@@ -585,7 +585,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             })}
             {v.evidence.filter(e => !e.subclaim_id || !v.subclaims.find(sc => sc.id === e.subclaim_id)).length > 0 && (
               <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#555', marginBottom: '8px' }}>Other Sources</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--syn-text-muted)', marginBottom: '8px' }}>Other Sources</div>
                 {v.evidence.filter(e => !e.subclaim_id || !v.subclaims.find(sc => sc.id === e.subclaim_id)).map((ev, i) => (
                   <EvidenceCard key={ev.id} ev={ev} i={i} compact
                     isExpanded={expandedEvidenceId === ev.id}
@@ -598,20 +598,20 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 {selectedClaim.status === 'verifying' ? (
                   <>
                     <div className="syn-spinner" style={{ width: '20px', height: '20px', margin: '0 auto 12px' }} />
-                    <div style={{ fontSize: '12px', color: '#fff', marginBottom: '6px' }}>Searching for evidence...</div>
-                    <div style={{ fontSize: '10px', color: '#555', maxWidth: '280px', margin: '0 auto', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: '12px', color: 'var(--syn-text-heading)', marginBottom: '6px' }}>Searching for evidence...</div>
+                    <div style={{ fontSize: '10px', color: 'var(--syn-text-muted)', maxWidth: '280px', margin: '0 auto', lineHeight: 1.5 }}>
                       Querying SEC EDGAR, XBRL, earnings calls, FRED, market data, and adversarial search
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: '#555', fontSize: '12px' }}>No evidence collected yet</div>
+                  <div style={{ color: 'var(--syn-text-muted)', fontSize: '12px' }}>No evidence collected yet</div>
                 )}
               </div>
             )}
             {v.evidence.length > 0 && selectedClaim.status === 'verifying' && (
-              <div style={{ padding: '8px 12px', marginBottom: '10px', borderRadius: '6px', backgroundColor: '#050505', border: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ padding: '8px 12px', marginBottom: '10px', borderRadius: '6px', backgroundColor: 'var(--syn-bg-sunken)', border: '1px solid var(--syn-border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span className="syn-dot-pulse" />
-                <span style={{ fontSize: '11px', color: '#888' }}>
+                <span style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)' }}>
                   {v.evidence.length} piece{v.evidence.length !== 1 ? 's' : ''} of evidence collected
                   {!v.completedSteps.includes('evidence_retrieval') && ' — still searching...'}
                 </span>
@@ -627,9 +627,9 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {v.contradictions.map((c, i) => {
                   const sevColors: Record<string, { bg: string; border: string; text: string }> = {
-                    low: { bg: '#141210', border: '#2a2518', text: '#b09555' },
-                    medium: { bg: '#14110e', border: '#2a2018', text: '#c48a5a' },
-                    high: { bg: '#140e0e', border: '#2a1a1a', text: '#c47070' },
+                    low: { bg: 'var(--syn-amber-bg)', border: 'var(--syn-amber-border)', text: '#b09555' },
+                    medium: { bg: 'var(--syn-orange-bg)', border: 'var(--syn-orange-border)', text: '#c48a5a' },
+                    high: { bg: 'var(--syn-red-bg)', border: 'var(--syn-red-border)', text: '#c47070' },
                   };
                   const sev = sevColors[c.severity] || sevColors.medium;
                   return (
@@ -642,27 +642,27 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                         <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '3px', backgroundColor: `${sev.text}20`, color: sev.text, border: `1px solid ${sev.text}40`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{c.severity} severity</span>
                       </div>
                       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-                        <div style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a' }}>
+                        <div style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--syn-bg-raised)', border: '1px solid var(--syn-border)' }}>
                           <div style={{ fontSize: '9px', fontWeight: 700, color: '#a89050', textTransform: 'uppercase', marginBottom: '4px' }}>{c.source_a?.type || 'Source A'}</div>
-                          <div style={{ fontSize: '10px', color: '#888', marginBottom: '4px' }}>{c.source_a?.name}</div>
-                          <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.5, fontStyle: 'italic' }}>"{c.source_a?.text}"</div>
+                          <div style={{ fontSize: '10px', color: 'var(--syn-text-tertiary)', marginBottom: '4px' }}>{c.source_a?.name}</div>
+                          <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.5, fontStyle: 'italic' }}>"{c.source_a?.text}"</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                           <span style={{ fontSize: '10px', fontWeight: 800, color: sev.text }}>VS</span>
                         </div>
-                        <div style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a' }}>
+                        <div style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--syn-bg-raised)', border: '1px solid var(--syn-border)' }}>
                           <div style={{ fontSize: '9px', fontWeight: 700, color: '#6b9bd2', textTransform: 'uppercase', marginBottom: '4px' }}>{c.source_b?.type || 'Source B'}</div>
-                          <div style={{ fontSize: '10px', color: '#888', marginBottom: '4px' }}>{c.source_b?.name}</div>
-                          <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.5, fontStyle: 'italic' }}>"{c.source_b?.text}"</div>
+                          <div style={{ fontSize: '10px', color: 'var(--syn-text-tertiary)', marginBottom: '4px' }}>{c.source_b?.name}</div>
+                          <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.5, fontStyle: 'italic' }}>"{c.source_b?.text}"</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#aaa', lineHeight: 1.5, paddingTop: '10px', borderTop: `1px solid ${sev.border}` }}>{c.explanation}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5, paddingTop: '10px', borderTop: `1px solid ${sev.border}` }}>{c.explanation}</div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--syn-text-muted)', fontSize: '12px' }}>
                 {selectedClaim.status === 'verifying' ? 'Checking for contradictions...' : 'No contradictions detected between sources'}
               </div>
             )}
@@ -674,16 +674,16 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           <div className="syn-fade">
             {v.consistencyIssues.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5, marginBottom: '4px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5, marginBottom: '4px' }}>
                   Cross-document consistency analysis detected subtle tensions between sources — beyond direct contradictions.
                 </div>
                 {v.consistencyIssues.map((ci, i) => {
                   const typeColors: Record<string, { bg: string; border: string; text: string; label: string }> = {
-                    narrative_drift: { bg: '#120e14', border: '#2a1a2a', text: '#9a80b8', label: 'Narrative Drift' },
-                    metric_inconsistency: { bg: '#140e0e', border: '#2a1a1a', text: '#c47070', label: 'Metric Inconsistency' },
-                    temporal_inconsistency: { bg: '#141210', border: '#2a2518', text: '#c4a35a', label: 'Temporal Issue' },
-                    omission_flag: { bg: '#0e1414', border: '#1a2a2a', text: '#6a9f9c', label: 'Omission Flag' },
-                    risk_factor_tension: { bg: '#14110e', border: '#2a2018', text: '#c48a5a', label: 'Risk Factor Tension' },
+                    narrative_drift: { bg: 'var(--syn-purple-bg)', border: 'var(--syn-purple-border)', text: '#9a80b8', label: 'Narrative Drift' },
+                    metric_inconsistency: { bg: 'var(--syn-red-bg)', border: 'var(--syn-red-border)', text: '#c47070', label: 'Metric Inconsistency' },
+                    temporal_inconsistency: { bg: 'var(--syn-amber-bg)', border: 'var(--syn-amber-border)', text: '#c4a35a', label: 'Temporal Issue' },
+                    omission_flag: { bg: 'var(--syn-teal-bg)', border: 'var(--syn-teal-border)', text: '#6a9f9c', label: 'Omission Flag' },
+                    risk_factor_tension: { bg: 'var(--syn-orange-bg)', border: 'var(--syn-orange-border)', text: '#c48a5a', label: 'Risk Factor Tension' },
                   };
                   const tc = typeColors[ci.type] || typeColors.omission_flag;
                   const sevColors: Record<string, string> = { low: '#b09555', medium: '#c48a5a', high: '#c47070' };
@@ -695,14 +695,14 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '3px', backgroundColor: `${tc.text}20`, color: tc.text, border: `1px solid ${tc.text}40`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{tc.label}</span>
-                        <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px', color: sevColors[ci.severity] || '#888', border: `1px solid ${(sevColors[ci.severity] || '#888')}40`, textTransform: 'uppercase' }}>{ci.severity}</span>
+                        <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px', color: sevColors[ci.severity] || 'var(--syn-text-tertiary)', border: `1px solid ${(sevColors[ci.severity] || 'var(--syn-text-tertiary)')}40`, textTransform: 'uppercase' }}>{ci.severity}</span>
                         {ci.sources_involved?.length > 0 && (
-                          <span style={{ fontSize: '9px', color: '#555', marginLeft: 'auto' }}>Sources: {ci.sources_involved.join(', ')}</span>
+                          <span style={{ fontSize: '9px', color: 'var(--syn-text-muted)', marginLeft: 'auto' }}>Sources: {ci.sources_involved.join(', ')}</span>
                         )}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6, marginBottom: '8px' }}>{ci.description}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.6, marginBottom: '8px' }}>{ci.description}</div>
                       {ci.implication && (
-                        <div style={{ fontSize: '11px', color: '#999', lineHeight: 1.5, paddingTop: '8px', borderTop: `1px solid ${tc.border}`, fontStyle: 'italic' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5, paddingTop: '8px', borderTop: `1px solid ${tc.border}`, fontStyle: 'italic' }}>
                           Implication: {ci.implication}
                         </div>
                       )}
@@ -711,7 +711,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 })}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>No cross-document consistency issues detected</div>
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--syn-text-muted)', fontSize: '12px' }}>No cross-document consistency issues detected</div>
             )}
           </div>
         )}
@@ -719,7 +719,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
         {/* Plausibility */}
         {activeTab === 'plausibility' && v.plausibility && (
           <div className="syn-fade">
-            <div style={{ padding: '20px', borderRadius: '12px', marginBottom: '16px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a', textAlign: 'center' }}>
+            <div style={{ padding: '20px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)', textAlign: 'center' }}>
               <div className="syn-section-header" style={{ marginBottom: '8px', letterSpacing: '1.5px' }}>Forward-Looking Plausibility</div>
               <div style={{ fontSize: '40px', fontWeight: 700, letterSpacing: '-1px', color: v.plausibility.plausibility_score >= 70 ? '#6fad8e' : v.plausibility.plausibility_score >= 40 ? '#c4a35a' : '#c47070' }}>
                 {v.plausibility.plausibility_score}
@@ -727,41 +727,41 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: v.plausibility.plausibility_score >= 70 ? '#6fad8e' : v.plausibility.plausibility_score >= 40 ? '#c4a35a' : '#c47070', marginBottom: '12px' }}>
                 {v.plausibility.plausibility_level?.replace(/_/g, ' ')}
               </div>
-              <div style={{ fontSize: '13px', color: '#aaa', lineHeight: 1.6, maxWidth: '500px', margin: '0 auto' }}>{v.plausibility.assessment}</div>
+              <div style={{ fontSize: '13px', color: 'var(--syn-text-tertiary)', lineHeight: 1.6, maxWidth: '500px', margin: '0 auto' }}>{v.plausibility.assessment}</div>
             </div>
             <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #1a2a22', backgroundColor: '#0d1410' }}>
+              <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid var(--syn-green-border)', backgroundColor: 'var(--syn-green-bg)' }}>
                 <div className="syn-section-header" style={{ color: '#6fad8e', marginBottom: '8px', letterSpacing: '1px' }}>Projection</div>
-                <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6 }}>
-                  <div><span style={{ color: '#666' }}>Target:</span> {v.plausibility.projection?.target_metric}</div>
-                  <div><span style={{ color: '#666' }}>Value:</span> {v.plausibility.projection?.target_value}</div>
-                  <div><span style={{ color: '#666' }}>By:</span> {v.plausibility.projection?.target_date}</div>
-                  <div><span style={{ color: '#666' }}>Requires:</span> {v.plausibility.projection?.implied_growth_rate}</div>
+                <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.6 }}>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>Target:</span> {v.plausibility.projection?.target_metric}</div>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>Value:</span> {v.plausibility.projection?.target_value}</div>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>By:</span> {v.plausibility.projection?.target_date}</div>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>Requires:</span> {v.plausibility.projection?.implied_growth_rate}</div>
                 </div>
               </div>
-              <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #1a1a2a', backgroundColor: '#0e0e14' }}>
+              <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid var(--syn-blue-border)', backgroundColor: 'var(--syn-blue-bg)' }}>
                 <div className="syn-section-header" style={{ color: '#7090aa', marginBottom: '8px', letterSpacing: '1px' }}>Current Trajectory</div>
-                <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.6 }}>
-                  <div><span style={{ color: '#666' }}>Current:</span> {v.plausibility.current_trajectory?.current_value}</div>
-                  <div><span style={{ color: '#666' }}>Trend:</span> {v.plausibility.current_trajectory?.trend?.replace(/_/g, ' ')}</div>
-                  <div><span style={{ color: '#666' }}>Historical:</span> {v.plausibility.current_trajectory?.historical_growth_rate}</div>
+                <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.6 }}>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>Current:</span> {v.plausibility.current_trajectory?.current_value}</div>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>Trend:</span> {v.plausibility.current_trajectory?.trend?.replace(/_/g, ' ')}</div>
+                  <div><span style={{ color: 'var(--syn-text-tertiary)' }}>Historical:</span> {v.plausibility.current_trajectory?.historical_growth_rate}</div>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               {v.plausibility.key_risks?.length > 0 && (
-                <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #2a1a1a', backgroundColor: '#140e0e' }}>
+                <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid var(--syn-red-border)', backgroundColor: 'var(--syn-red-bg)' }}>
                   <div className="syn-section-header" style={{ color: '#c47070', marginBottom: '8px', letterSpacing: '1px' }}>Key Risks</div>
                   {v.plausibility.key_risks.map((r, i) => (
-                    <div key={i} style={{ fontSize: '11px', color: '#bbb', lineHeight: 1.5, marginBottom: '4px', paddingLeft: '10px', borderLeft: '2px solid #2a1a1a' }}>{r}</div>
+                    <div key={i} style={{ fontSize: '11px', color: 'var(--syn-text-secondary)', lineHeight: 1.5, marginBottom: '4px', paddingLeft: '10px', borderLeft: '2px solid var(--syn-red-border)' }}>{r}</div>
                   ))}
                 </div>
               )}
               {v.plausibility.key_assumptions?.length > 0 && (
-                <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid #1a1a2a', backgroundColor: '#0e0e14' }}>
+                <div style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '1px solid var(--syn-blue-border)', backgroundColor: 'var(--syn-blue-bg)' }}>
                   <div className="syn-section-header" style={{ color: '#8a7ab5', marginBottom: '8px', letterSpacing: '1px' }}>Key Assumptions</div>
                   {v.plausibility.key_assumptions.map((a, i) => (
-                    <div key={i} style={{ fontSize: '11px', color: '#bbb', lineHeight: 1.5, marginBottom: '4px', paddingLeft: '10px', borderLeft: '2px solid #1a1a2a' }}>{a}</div>
+                    <div key={i} style={{ fontSize: '11px', color: 'var(--syn-text-secondary)', lineHeight: 1.5, marginBottom: '4px', paddingLeft: '10px', borderLeft: '2px solid var(--syn-blue-border)' }}>{a}</div>
                   ))}
                 </div>
               )}
@@ -776,8 +776,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               <>
                 <div style={{ padding: '12px 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span className="syn-section-header" style={{ letterSpacing: '1px' }}>Claim Origin Timeline</span>
-                  <div style={{ flex: 1, height: '1px', background: '#1a1a1a' }} />
-                  <span style={{ fontSize: '10px', color: '#444' }}>{v.provenanceNodes.length} sources traced</span>
+                  <div style={{ flex: 1, height: '1px', background: 'var(--syn-border)' }} />
+                  <span style={{ fontSize: '10px', color: 'var(--syn-text-dim)' }}>{v.provenanceNodes.length} sources traced</span>
                 </div>
                 <div style={{ overflowX: 'auto', overflowY: 'hidden', padding: '28px 12px 20px', display: 'flex', alignItems: 'stretch', gap: '0', minHeight: '240px' }}>
                   {v.provenanceNodes.map((node, i) => {
@@ -801,11 +801,11 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                             <span style={{ fontSize: '16px' }}>{sourceIcons[node.source_type] || '📋'}</span>
                             <div>
                               <div style={{ fontSize: '11px', fontWeight: 700, color: mutColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{node.source_type.replace(/_/g, ' ')}</div>
-                              <div style={{ fontSize: '10px', color: '#888' }}>{node.source_name}</div>
+                              <div style={{ fontSize: '10px', color: 'var(--syn-text-tertiary)' }}>{node.source_name}</div>
                             </div>
-                            {node.date && <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#555', fontWeight: 600 }}>{node.date}</span>}
+                            {node.date && <span style={{ marginLeft: 'auto', fontSize: '9px', color: 'var(--syn-text-muted)', fontWeight: 600 }}>{node.date}</span>}
                           </div>
-                          <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.55, fontStyle: 'italic' }}>"{node.text}"</div>
+                          <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.55, fontStyle: 'italic' }}>"{node.text}"</div>
                           <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: mutColor }} />
                             <span style={{ fontSize: '9px', fontWeight: 700, color: mutColor, textTransform: 'uppercase' }}>{node.mutation_severity} mutation</span>
@@ -825,14 +825,14 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                   })}
                 </div>
                 {v.provenanceAnalysis && (
-                  <div style={{ marginTop: '8px', padding: '14px 16px', borderRadius: '10px', backgroundColor: '#080808', border: '1px solid #1a1a1a', fontSize: '13px', color: '#999', lineHeight: 1.65 }}>
-                    <span style={{ fontWeight: 700, color: '#fff', marginRight: '6px' }}>Analysis:</span>
+                  <div style={{ marginTop: '8px', padding: '14px 16px', borderRadius: '10px', backgroundColor: 'var(--syn-bg-input)', border: '1px solid var(--syn-border)', fontSize: '13px', color: 'var(--syn-text-tertiary)', lineHeight: 1.65 }}>
+                    <span style={{ fontWeight: 700, color: 'var(--syn-text-heading)', marginRight: '6px' }}>Analysis:</span>
                     {v.provenanceAnalysis}
                   </div>
                 )}
               </>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--syn-text-muted)', fontSize: '12px' }}>
                 {selectedClaim.status === 'verifying' ? 'Tracing claim origins...' : 'No provenance data yet'}
               </div>
             )}
@@ -844,26 +844,26 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           <div className="syn-fade">
             {v.correctedClaim ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a2a22', backgroundColor: '#0d1410' }}>
+                <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-green-border)', backgroundColor: 'var(--syn-green-bg)' }}>
                   <div className="syn-section-header" style={{ color: '#6fad8e', marginBottom: '8px', letterSpacing: '1px' }}>Corrected Claim</div>
-                  <div style={{ fontSize: '14px', color: '#e0e0e0', lineHeight: 1.6 }}>"{v.correctedClaim.corrected}"</div>
+                  <div style={{ fontSize: '14px', color: 'var(--syn-text)', lineHeight: 1.6 }}>"{v.correctedClaim.corrected}"</div>
                 </div>
                 {(v.correctedClaim as any).changes?.length > 0 && (
-                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
-                    <div className="syn-section-header" style={{ color: '#fff', marginBottom: '10px', letterSpacing: '0.5px' }}>Changes Made</div>
+                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)' }}>
+                    <div className="syn-section-header" style={{ color: 'var(--syn-text-heading)', marginBottom: '10px', letterSpacing: '0.5px' }}>Changes Made</div>
                     {((v.correctedClaim as any).changes as { description: string; reason: string }[]).map((ch, i, arr) => (
-                      <div key={i} style={{ padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid #111' : 'none' }}>
-                        <div style={{ fontSize: '12px', color: '#e0e0e0', fontWeight: 600, marginBottom: '4px' }}>{ch.description}</div>
-                        <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5 }}>{ch.reason}</div>
+                      <div key={i} style={{ padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--syn-border-subtle)' : 'none' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--syn-text)', fontWeight: 600, marginBottom: '4px' }}>{ch.description}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5 }}>{ch.reason}</div>
                       </div>
                     ))}
                   </div>
                 )}
                 {v.correctedClaim.caveats?.length > 0 && (
-                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #2a2518', backgroundColor: '#141210' }}>
+                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-amber-border)', backgroundColor: 'var(--syn-amber-bg)' }}>
                     <div className="syn-section-header" style={{ color: '#c4a35a', marginBottom: '8px', letterSpacing: '0.5px' }}>Caveats</div>
                     {v.correctedClaim.caveats.map((c, i) => (
-                      <div key={i} style={{ fontSize: '12px', color: '#ddd', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
+                      <div key={i} style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
                         <span style={{ color: '#c4a35a', flexShrink: 0 }}>●</span> {c}
                       </div>
                     ))}
@@ -871,7 +871,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 )}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--syn-text-muted)', fontSize: '12px' }}>
                 {selectedClaim.status === 'verifying' ? 'Generating corrected claim...' : 'No correction generated yet'}
               </div>
             )}
@@ -883,7 +883,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           <div className="syn-fade">
             {v.riskSignals ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+                <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                     <span style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-1px', color: v.riskSignals.risk_level === 'critical' ? '#c47070' : v.riskSignals.risk_level === 'high' ? '#c48a5a' : v.riskSignals.risk_level === 'medium' ? '#c4a35a' : '#6fad8e' }}>
                       {v.riskSignals.risk_score}
@@ -892,23 +892,23 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                       Risk: {v.riskSignals.risk_level} ({v.riskSignals.risk_score}/100)
                     </div>
                   </div>
-                  <div style={{ fontSize: '14px', color: '#e0e0e0', lineHeight: 1.6, fontWeight: 600 }}>{v.riskSignals.headline}</div>
-                  <div style={{ fontSize: '12px', color: '#888', lineHeight: 1.6, marginTop: '8px' }}>{v.riskSignals.risk_narrative}</div>
+                  <div style={{ fontSize: '14px', color: 'var(--syn-text)', lineHeight: 1.6, fontWeight: 600 }}>{v.riskSignals.headline}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--syn-text-tertiary)', lineHeight: 1.6, marginTop: '8px' }}>{v.riskSignals.risk_narrative}</div>
                 </div>
                 {v.riskSignals.patterns_detected.length > 0 && (
-                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
-                    <div className="syn-section-header" style={{ color: '#fff', marginBottom: '10px', letterSpacing: '0.5px' }}>Patterns Detected</div>
+                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)' }}>
+                    <div className="syn-section-header" style={{ color: 'var(--syn-text-heading)', marginBottom: '10px', letterSpacing: '0.5px' }}>Patterns Detected</div>
                     {v.riskSignals.patterns_detected.map((p, i) => (
-                      <div key={i} style={{ padding: '10px 0', borderBottom: i < v.riskSignals!.patterns_detected.length - 1 ? '1px solid #111' : 'none' }}>
-                        <div style={{ fontSize: '12px', color: '#e0e0e0', fontWeight: 600, marginBottom: '4px' }}>{p.pattern}</div>
-                        <div style={{ fontSize: '11px', color: '#777', lineHeight: 1.5 }}>{p.evidence}</div>
-                        <div style={{ fontSize: '10px', color: '#555', marginTop: '4px' }}>{p.frequency}</div>
+                      <div key={i} style={{ padding: '10px 0', borderBottom: i < v.riskSignals!.patterns_detected.length - 1 ? '1px solid var(--syn-border-subtle)' : 'none' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--syn-text)', fontWeight: 600, marginBottom: '4px' }}>{p.pattern}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5 }}>{p.evidence}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--syn-text-muted)', marginTop: '4px' }}>{p.frequency}</div>
                       </div>
                     ))}
                   </div>
                 )}
                 {v.riskSignals.red_flags.length > 0 && (
-                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #2a1a1a', backgroundColor: '#140e0e' }}>
+                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-red-border)', backgroundColor: 'var(--syn-red-bg)' }}>
                     <div className="syn-section-header" style={{ color: '#c47070', marginBottom: '8px', letterSpacing: '0.5px' }}>Red Flags</div>
                     {v.riskSignals.red_flags.map((f, i) => (
                       <div key={i} style={{ fontSize: '12px', color: '#c09090', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
@@ -918,7 +918,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                   </div>
                 )}
                 {v.riskSignals.recommended_actions.length > 0 && (
-                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a2a22', backgroundColor: '#0d1410' }}>
+                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-green-border)', backgroundColor: 'var(--syn-green-bg)' }}>
                     <div className="syn-section-header" style={{ color: '#6fad8e', marginBottom: '8px', letterSpacing: '0.5px' }}>Recommended Actions</div>
                     {v.riskSignals.recommended_actions.map((a, i) => (
                       <div key={i} style={{ fontSize: '12px', color: '#90b8a0', lineHeight: 1.5, padding: '3px 0', display: 'flex', gap: '8px' }}>
@@ -928,24 +928,24 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                   </div>
                 )}
                 {(v.materiality || v.authorityConflicts.length > 0) && (
-                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a' }}>
+                  <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)' }}>
                     {v.materiality && (
                       <div style={{ marginBottom: v.authorityConflicts.length > 0 ? '12px' : '0' }}>
-                        <div className="syn-section-header" style={{ color: '#fff', marginBottom: '6px', letterSpacing: '0.5px' }}>Materiality</div>
-                        <div style={{ fontSize: '12px', color: '#aaa', lineHeight: 1.5 }}>
-                          <span style={{ color: v.materiality.materiality_level === 'critical' ? '#c47070' : v.materiality.materiality_level === 'high' ? '#c48a5a' : '#888', fontWeight: 600 }}>
+                        <div className="syn-section-header" style={{ color: 'var(--syn-text-heading)', marginBottom: '6px', letterSpacing: '0.5px' }}>Materiality</div>
+                        <div style={{ fontSize: '12px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5 }}>
+                          <span style={{ color: v.materiality.materiality_level === 'critical' ? '#c47070' : v.materiality.materiality_level === 'high' ? '#c48a5a' : 'var(--syn-text-tertiary)', fontWeight: 600 }}>
                             {v.materiality.materiality_level.toUpperCase()}
                           </span>
                           {' '}({v.materiality.materiality_score}/100) — {v.materiality.category.replace(/_/g, ' ')}
                         </div>
-                        <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>{v.materiality.impact_assessment}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', marginTop: '4px' }}>{v.materiality.impact_assessment}</div>
                       </div>
                     )}
                     {v.authorityConflicts.length > 0 && (
                       <div>
-                        <div className="syn-section-header" style={{ color: '#fff', marginBottom: '6px', letterSpacing: '0.5px' }}>Source Authority Conflicts</div>
+                        <div className="syn-section-header" style={{ color: 'var(--syn-text-heading)', marginBottom: '6px', letterSpacing: '0.5px' }}>Source Authority Conflicts</div>
                         {v.authorityConflicts.map((ac, i) => (
-                          <div key={i} style={{ fontSize: '11px', color: '#888', lineHeight: 1.5, padding: '4px 0', borderBottom: i < v.authorityConflicts.length - 1 ? '1px solid #111' : 'none' }}>
+                          <div key={i} style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5, padding: '4px 0', borderBottom: i < v.authorityConflicts.length - 1 ? '1px solid var(--syn-border-subtle)' : 'none' }}>
                             <span style={{ color: ac.severity === 'critical' ? '#c47070' : ac.severity === 'high' ? '#c48a5a' : '#b09555', fontWeight: 600 }}>
                               [{ac.severity.toUpperCase()}]
                             </span>{' '}
@@ -958,7 +958,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 )}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--syn-text-muted)', fontSize: '12px' }}>
                 {selectedClaim.status === 'verifying' ? 'Extracting risk signals...' : 'No risk signals generated yet'}
               </div>
             )}
@@ -996,7 +996,7 @@ const EvidenceCard: React.FC<{
           <span style={{ fontSize: '9px', fontWeight: 700, color: tierInfo.color, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{tierInfo.label}</span>
         )}
         {ev.study_type && !compact && (
-          <span style={{ fontSize: '9px', color: '#555', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', backgroundColor: '#1a1a1a' }}>{ev.study_type}</span>
+          <span style={{ fontSize: '9px', color: 'var(--syn-text-muted)', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', backgroundColor: '#1a1a1a' }}>{ev.study_type}</span>
         )}
         {ev.quality_score != null && !compact && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -1009,47 +1009,47 @@ const EvidenceCard: React.FC<{
         {ev.supports_claim != null && !compact && (
           <span style={{
             fontSize: '8px', fontWeight: 700, padding: '1px 5px', borderRadius: '3px',
-            backgroundColor: ev.supports_claim === true ? '#0d1410' : ev.supports_claim === false ? '#140e0e' : '#141210',
+            backgroundColor: ev.supports_claim === true ? 'var(--syn-green-bg)' : ev.supports_claim === false ? 'var(--syn-red-bg)' : 'var(--syn-amber-bg)',
             color: ev.supports_claim === true ? '#6fad8e' : ev.supports_claim === false ? '#c47070' : '#c4a35a',
-            border: `1px solid ${ev.supports_claim === true ? '#1a2a22' : ev.supports_claim === false ? '#2a1a1a' : '#2a2518'}`,
+            border: `1px solid ${ev.supports_claim === true ? 'var(--syn-green-border)' : ev.supports_claim === false ? 'var(--syn-red-border)' : 'var(--syn-amber-border)'}`,
           }}>
             {ev.supports_claim === true ? 'SUPPORTS' : ev.supports_claim === false ? 'OPPOSES' : 'PARTIAL'}
           </span>
         )}
         <span style={{
-          fontSize: compact ? '10px' : '10px', color: '#555',
+          fontSize: compact ? '10px' : '10px', color: 'var(--syn-text-muted)',
           marginLeft: compact ? 'auto' : undefined,
           transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
         }}>▸</span>
       </div>
 
-      <div style={{ fontSize: '12px', fontWeight: 600, color: '#ddd', marginBottom: '3px' }}>{ev.title}</div>
-      <div style={{ fontSize: '11px', color: '#888', lineHeight: 1.5 }}>
+      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--syn-text-secondary)', marginBottom: '3px' }}>{ev.title}</div>
+      <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5 }}>
         {isExpanded ? (ev.snippet_full || ev.snippet) : (ev.snippet?.slice(0, 180) + ((ev.snippet?.length || 0) > 180 ? '...' : ''))}
       </div>
 
       {isExpanded && (
-        <div style={{ marginTop: '10px', borderTop: '1px solid #1a1a1a', paddingTop: '10px' }} className="syn-fade">
+        <div style={{ marginTop: '10px', borderTop: '1px solid var(--syn-border)', paddingTop: '10px' }} className="syn-fade">
           {ev.assessment && (
             <div style={{ marginBottom: '8px' }}>
               <div className="syn-section-header" style={{ marginBottom: '4px', letterSpacing: '0.5px' }}>Assessment</div>
-              <div style={{ fontSize: '11px', color: '#aaa', lineHeight: 1.6 }}>{ev.assessment}</div>
+              <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.6 }}>{ev.assessment}</div>
             </div>
           )}
           {ev.source && (
             <div style={{ marginBottom: '8px' }}>
               <div className="syn-section-header" style={{ marginBottom: '4px', letterSpacing: '0.5px' }}>Source</div>
-              <div style={{ fontSize: '11px', color: '#aaa', lineHeight: 1.5 }}>{ev.source}</div>
+              <div style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)', lineHeight: 1.5 }}>{ev.source}</div>
             </div>
           )}
           {(ev.filing_type || ev.filing_date || ev.accession_number) && (
             <div style={{ marginBottom: '8px' }}>
               <div className="syn-section-header" style={{ marginBottom: '4px', letterSpacing: '0.5px' }}>Filing Details</div>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '11px', color: '#aaa' }}>
-                {ev.filing_type && <span><span style={{ color: '#666' }}>Type:</span> {ev.filing_type}</span>}
-                {ev.filing_date && <span><span style={{ color: '#666' }}>Date:</span> {ev.filing_date}</span>}
-                {ev.company_ticker && <span><span style={{ color: '#666' }}>Ticker:</span> {ev.company_ticker}</span>}
-                {ev.accession_number && <span><span style={{ color: '#666' }}>Accession:</span> {ev.accession_number}</span>}
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--syn-text-tertiary)' }}>
+                {ev.filing_type && <span><span style={{ color: 'var(--syn-text-tertiary)' }}>Type:</span> {ev.filing_type}</span>}
+                {ev.filing_date && <span><span style={{ color: 'var(--syn-text-tertiary)' }}>Date:</span> {ev.filing_date}</span>}
+                {ev.company_ticker && <span><span style={{ color: 'var(--syn-text-tertiary)' }}>Ticker:</span> {ev.company_ticker}</span>}
+                {ev.accession_number && <span><span style={{ color: 'var(--syn-text-tertiary)' }}>Accession:</span> {ev.accession_number}</span>}
               </div>
             </div>
           )}
@@ -1066,7 +1066,7 @@ const EvidenceCard: React.FC<{
                       <span style={{ fontSize: '10px', flexShrink: 0 }}>🔗</span>
                       <span style={{ fontWeight: 600, flexShrink: 0 }}>[{ci + 1}]</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayUrl}</span>
-                      <span style={{ fontSize: '9px', color: '#555', marginLeft: 'auto', flexShrink: 0 }}>↗</span>
+                      <span style={{ fontSize: '9px', color: 'var(--syn-text-muted)', marginLeft: 'auto', flexShrink: 0 }}>↗</span>
                     </a>
                   );
                 })}
@@ -1079,27 +1079,27 @@ const EvidenceCard: React.FC<{
       {ev.xbrl_match && (
         <div style={{
           marginTop: '8px', padding: '8px 10px', borderRadius: '6px',
-          backgroundColor: ev.xbrl_match === 'exact' ? '#0a1a0a' : ev.xbrl_match === 'close' ? '#1a1500' : '#1a0a0a',
-          border: `1px solid ${ev.xbrl_match === 'exact' ? '#1a3a1a' : ev.xbrl_match === 'close' ? '#3a3000' : '#3a1a1a'}`,
+          backgroundColor: ev.xbrl_match === 'exact' ? 'var(--syn-green-bg)' : ev.xbrl_match === 'close' ? 'var(--syn-amber-bg)' : 'var(--syn-red-bg)',
+          border: `1px solid ${ev.xbrl_match === 'exact' ? 'var(--syn-green-border)' : ev.xbrl_match === 'close' ? 'var(--syn-amber-border)' : 'var(--syn-red-border)'}`,
         }}>
           <div style={{ fontSize: '9px', fontWeight: 800, color: '#a89050', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             XBRL Ground Truth
             <span style={{ fontSize: '8px', padding: '1px 5px', borderRadius: '3px', backgroundColor: ev.xbrl_match === 'exact' ? '#6fad8e20' : ev.xbrl_match === 'close' ? '#c4a35a20' : '#c4707020', color: ev.xbrl_match === 'exact' ? '#6fad8e' : ev.xbrl_match === 'close' ? '#c4a35a' : '#c47070', border: `1px solid ${ev.xbrl_match === 'exact' ? '#6fad8e40' : ev.xbrl_match === 'close' ? '#c4a35a40' : '#c4707040'}` }}>{ev.xbrl_match?.toUpperCase()} MATCH</span>
           </div>
           <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>
-            {ev.xbrl_claimed && <div><span style={{ color: '#888', fontSize: '9px', fontWeight: 600 }}>CLAIMED: </span><span style={{ color: '#fff', fontWeight: 700 }}>{ev.xbrl_claimed}</span></div>}
-            {ev.xbrl_actual && <div><span style={{ color: '#888', fontSize: '9px', fontWeight: 600 }}>ACTUAL: </span><span style={{ color: '#a89050', fontWeight: 700 }}>{ev.xbrl_actual}</span></div>}
+            {ev.xbrl_claimed && <div><span style={{ color: 'var(--syn-text-tertiary)', fontSize: '9px', fontWeight: 600 }}>CLAIMED: </span><span style={{ color: 'var(--syn-text-heading)', fontWeight: 700 }}>{ev.xbrl_claimed}</span></div>}
+            {ev.xbrl_actual && <div><span style={{ color: 'var(--syn-text-tertiary)', fontSize: '9px', fontWeight: 600 }}>ACTUAL: </span><span style={{ color: '#a89050', fontWeight: 700 }}>{ev.xbrl_actual}</span></div>}
           </div>
-          {ev.xbrl_computation && <div className="syn-mono" style={{ fontSize: '10px', color: '#888', marginTop: '4px' }}>{ev.xbrl_computation}</div>}
+          {ev.xbrl_computation && <div className="syn-mono" style={{ fontSize: '10px', color: 'var(--syn-text-tertiary)', marginTop: '4px' }}>{ev.xbrl_computation}</div>}
           {ev.xbrl_discrepancy && ev.xbrl_match !== 'exact' && <div style={{ fontSize: '10px', color: ev.xbrl_match === 'close' ? '#c4a35a' : '#c47070', marginTop: '4px' }}>{ev.xbrl_discrepancy}</div>}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: '#555' }}>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '4px', fontSize: '9px', color: 'var(--syn-text-muted)' }}>
         {ev.verified_against && <span style={{ color: '#a89050', fontWeight: 600 }}>{ev.verified_against}</span>}
         {ev.year && <span>{ev.year}</span>}
         {ev.citations != null && <span>{ev.citations} cit.</span>}
-        {!isExpanded && <span style={{ marginLeft: 'auto', color: '#444' }}>click to expand</span>}
+        {!isExpanded && <span style={{ marginLeft: 'auto', color: 'var(--syn-text-dim)' }}>click to expand</span>}
       </div>
     </div>
   );

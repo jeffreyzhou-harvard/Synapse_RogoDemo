@@ -15,32 +15,32 @@ interface TraceFeedProps {
 }
 
 const TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
-  step:    { color: '#ffffff', icon: '▸' },
+  step:    { color: 'var(--syn-text-heading)', icon: '▸' },
   success: { color: '#6fad8e', icon: '✓' },
   error:   { color: '#c47070', icon: '✗' },
-  verdict: { color: '#cccccc', icon: '◆' },
-  info:    { color: '#666666', icon: '·' },
+  verdict: { color: 'var(--syn-text-secondary)', icon: '◆' },
+  info:    { color: 'var(--syn-text-tertiary)', icon: '·' },
 };
 
 const TraceFeed: React.FC<TraceFeedProps> = ({ traceLines, isVerifying, traceRef }) => (
   <div style={{
-    width: '300px', flexShrink: 0, borderLeft: '1px solid #1a1a1a',
+    width: '300px', flexShrink: 0, borderLeft: '1px solid var(--syn-border)',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    backgroundColor: '#050505',
+    backgroundColor: 'var(--syn-bg-sunken)',
   }}>
     <div style={{
-      padding: '8px 12px', borderBottom: '1px solid #1a1a1a',
+      padding: '8px 12px', borderBottom: '1px solid var(--syn-border)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span className={isVerifying ? 'syn-dot-pulse' : undefined}
-          style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isVerifying ? '#fff' : '#555' }}
+          style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isVerifying ? 'var(--syn-text-heading)' : 'var(--syn-text-muted)' }}
         />
-        <span style={{ fontSize: '10px', fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px' }}>
+        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--syn-text-heading)', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Mission Control
         </span>
       </div>
-      <span style={{ fontSize: '9px', color: '#555' }}>{traceLines.length} events</span>
+      <span style={{ fontSize: '9px', color: 'var(--syn-text-muted)' }}>{traceLines.length} events</span>
     </div>
 
     <div ref={traceRef} style={{
@@ -50,7 +50,7 @@ const TraceFeed: React.FC<TraceFeedProps> = ({ traceLines, isVerifying, traceRef
     }}>
       {traceLines.map((line, i) => {
         if (line.type === 'divider') {
-          return <div key={i} style={{ borderTop: '1px solid #1a1a1a', margin: '6px 0' }} />;
+          return <div key={i} style={{ borderTop: '1px solid var(--syn-border)', margin: '6px 0' }} />;
         }
         const cfg = TYPE_CONFIG[line.type] || TYPE_CONFIG.info;
         const badgeInfo = line.badge ? AGENT_BRAND_COLORS[line.badge] : null;
