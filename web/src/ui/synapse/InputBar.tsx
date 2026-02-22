@@ -118,26 +118,58 @@ const InputBar: React.FC<InputBarProps> = ({
               </p>
             </div>
 
-            {/* Pipeline strip */}
+            {/* Pipeline carousel */}
             <div className="syn-mono" style={{
-              maxWidth: '700px', margin: '0 auto 28px', padding: '16px 20px',
-              border: '1px solid #141414', borderRadius: '2px', backgroundColor: '#050505',
+              maxWidth: '700px', margin: '0 auto 28px',
+              overflow: 'hidden', position: 'relative',
+              maskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 0' }}>
-                {['ingest', 'extract', 'resolve', 'normalize', 'retrieve', 'evaluate',
-                  'contradict', 'consistency', 'plausibility', 'synthesize', 'trace', 'risk',
-                ].map((step, i, arr) => (
-                  <React.Fragment key={step}>
-                    <div style={{ fontSize: '8px', fontWeight: 600, color: '#555', letterSpacing: '0.3px' }}>{step}</div>
-                    {i < arr.length - 1 && (
-                      <div style={{ color: '#1a1a1a', fontSize: '7px', flexShrink: 0, padding: '0 1px' }}>{'\u2192'}</div>
-                    )}
-                  </React.Fragment>
-                ))}
+              {/* Row 1: pipeline stages */}
+              <div className="scroll-ticker-wrap" style={{ overflow: 'hidden', marginBottom: '10px' }}>
+                <div style={{
+                  display: 'flex', gap: '6px', alignItems: 'center', whiteSpace: 'nowrap', width: 'max-content',
+                  animation: 'syn-ticker 28s linear infinite',
+                }}>
+                  {[...Array(2)].map((_, dup) => (
+                    <React.Fragment key={dup}>
+                      {['ingest', 'extract', 'resolve', 'normalize', 'retrieve', 'evaluate',
+                        'contradict', 'consistency', 'plausibility', 'synthesize', 'trace', 'risk',
+                      ].map((step, i) => (
+                        <React.Fragment key={`${dup}-${step}`}>
+                          <span style={{
+                            fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '0.5px',
+                            padding: '4px 10px', borderRadius: '4px', border: '1px solid #1a1a1a',
+                            backgroundColor: '#080808', flexShrink: 0,
+                          }}>{step}</span>
+                          {(i < 11 || dup === 0) && (
+                            <span style={{ color: '#222', fontSize: '8px', flexShrink: 0 }}>→</span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </div>
               </div>
-              <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #111', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '8px', color: '#2a2a2a' }}>SEC EDGAR · XBRL · Earnings · FRED · Market Data · Adversarial Search</span>
-                <span style={{ fontSize: '8px', color: '#2a2a2a' }}>materiality · authority hierarchy · peer benchmarks</span>
+              {/* Row 2: data sources (scrolls opposite direction) */}
+              <div className="scroll-ticker-wrap" style={{ overflow: 'hidden' }}>
+                <div style={{
+                  display: 'flex', gap: '16px', alignItems: 'center', whiteSpace: 'nowrap', width: 'max-content',
+                  animation: 'syn-ticker 35s linear infinite reverse',
+                }}>
+                  {[...Array(2)].map((_, dup) => (
+                    <React.Fragment key={dup}>
+                      {['SEC EDGAR', 'XBRL', 'Earnings Calls', 'FRED', 'Market Data', 'Adversarial Search',
+                        'Materiality Scoring', 'Authority Hierarchy', 'Peer Benchmarks', 'Provenance Tracing',
+                        'Citation Verification', 'Risk Signals',
+                      ].map(label => (
+                        <span key={`${dup}-${label}`} style={{
+                          fontSize: '8px', color: '#333', letterSpacing: '0.3px', flexShrink: 0,
+                        }}>{label}</span>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </div>
               </div>
             </div>
 
