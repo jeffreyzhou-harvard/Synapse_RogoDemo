@@ -1370,56 +1370,153 @@ def extract_url_content(url: str) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def extract_claims(text: str) -> List[Dict]:
-    """Extract verifiable financial claims from text."""
-    prompt = f"""Extract EVERY discrete, verifiable factual claim from this text. Be thorough — focus on financial and business claims that can be verified against SEC filings, earnings calls, market data, and third-party sources.
+    """Extract verifiable financial claims from the full document.
 
-INCLUDE these types of claims:
-- Financial metrics: revenue, margins, EPS, growth rates, profitability figures ("gross margin was 46.2%", "revenue of $94.8 billion")
-- Valuation: multiples, enterprise value, market cap ("trades at 25x earnings", "market cap of $3 trillion")
-- Transactions: M&A deals, IPOs, buybacks with parties, values, dates ("acquired Activision for $68.7B")
-- Regulatory: compliance statements, filing references, capital ratios ("CET1 ratio was 15.0%", "no material litigation pending")
-- Guidance / Forward-looking: projections, targets, timelines ("expects revenue growth of 10-12%", "expects to reach profitability by Q3 2026")
-- Operational: delivery numbers, headcount, market share ("delivered 1.81 million vehicles")
-- Comparative: year-over-year changes, rankings, superlatives ("grew 409% year-over-year", "#1 player in our market")
-- Attribution: claims citing a third-party source ("According to Gartner, the market will grow 15%", "McKinsey estimates 30% cost reduction")
-- CIM / Pitch Deck specific: TAM/SAM/SOM figures, customer retention rates, unit economics, LTV/CAC, ARR, NRR, runway, burn rate
+    Pipeline: normalize → cache check → chunk → select passages →
+    LLM per chunk → validate offsets → dedupe → cache store → return.
+    """
+    import logging
+    from app.text_chunking import normalize_text, chunk_text
+    from app.passage_selector import select_passages, SelectedPassage
+    from app.deduping import dedupe_claims
+    from app.extraction_cache import get_cached, set_cached, doc_hash
 
-EXCLUDE (do NOT extract):
-- Opinions, subjective analysis, rhetorical questions
-- Vague statements without specific verifiable data points
-- Author biographical info or article metadata
+    log = logging.getLogger("synapse.extract_claims")
+    t0 = time.time()
 
-Rules:
-- Each claim must be a single, atomic, independently verifiable statement
-- Provide the original wording and a normalized version optimized for financial search
-- Tag type: "financial_metric" | "valuation" | "transaction" | "regulatory" | "guidance" | "attribution" | "comparative" | "operational"
-- For attribution claims, include the cited source in the normalized version
-- For guidance/forward-looking claims, note the projection date and target date
-- Extract company ticker when possible
-- Include approximate location in the text (beginning, middle, end, or paragraph number if discernible)
+    norm_text = normalize_text(text)
+    total_doc_chars = len(norm_text)
+    dh = doc_hash(text)
 
-TEXT:
-{text[:8000]}
+    # --- Cache check ---
+    cached = get_cached(text)
+    if cached is not None:
+        log.info("extract_claims cache_hit=True doc_hash=%s claims=%d time_ms=%.0f",
+                 dh, len(cached), (time.time() - t0) * 1000)
+        return cached
 
-Return ONLY a JSON array:
-[
-  {{
-    "id": "claim-1",
-    "original": "exact text from source",
-    "normalized": "clean searchable version",
-    "type": "financial_metric|valuation|transaction|regulatory|guidance|attribution|comparative|operational",
-    "company_ticker": "AAPL or null",
-    "location": "beginning|middle|end or paragraph N"
-  }}
-]
+    # --- Chunk ---
+    chunks = chunk_text(norm_text)
+    num_chunks = len(chunks)
 
-Extract 8-25 claims. Be thorough. Return ONLY valid JSON, no markdown."""
+    # --- Passage selection ---
+    passages = select_passages(chunks)
+    num_passages_selected = len(passages)
 
-    raw = _call_llm(prompt, P.SYSTEM_CLAIM_EXTRACTION)
-    parsed = _parse_json_from_llm(raw)
-    if isinstance(parsed, list):
-        return parsed
-    return []
+    # Group passages by chunk_id
+    from collections import defaultdict
+    chunk_passages: Dict[str, List[SelectedPassage]] = defaultdict(list)
+    for p in passages:
+        chunk_passages[p["chunk_id"]].append(p)
+
+    # Build chunk text lookup
+    chunk_lookup = {c["chunk_id"]: c for c in chunks}
+
+    # --- LLM calls per chunk ---
+    all_raw_claims: List[Dict] = []
+    llm_input_chars = 0
+    llm_calls_count = 0
+    num_paragraphs_scored = sum(
+        len(re.split(r"\n\n+", c["text"])) for c in chunks
+    )
+
+    for chunk_id, cpassages in chunk_passages.items():
+        chunk = chunk_lookup.get(chunk_id)
+        if not chunk:
+            continue
+
+        # Build the text to send: just the selected passages with their offsets
+        passage_texts = []
+        for sp in sorted(cpassages, key=lambda x: x["passage_start_char"]):
+            passage_texts.append(sp["passage_text"])
+        combined_text = "\n\n".join(passage_texts)
+
+        if not combined_text.strip():
+            continue
+
+        prompt = P.claim_extraction_chunked(chunk_id, combined_text)
+        llm_input_chars += len(prompt)
+        llm_calls_count += 1
+
+        raw = _call_llm(prompt, P.SYSTEM_CLAIM_EXTRACTION)
+        parsed = _parse_json_from_llm(raw)
+        if not isinstance(parsed, list):
+            continue
+
+        # --- Validate offsets & attach location ---
+        for claim in parsed:
+            original = claim.get("original", "")
+            start = claim.get("start_char")
+            end = claim.get("end_char")
+
+            # Try to validate LLM-provided offsets against combined_text
+            valid = False
+            if isinstance(start, int) and isinstance(end, int):
+                span = combined_text[start:end]
+                if span == original:
+                    valid = True
+
+            if not valid:
+                # Fallback: find exact occurrence in combined_text
+                idx = combined_text.find(original)
+                if idx >= 0:
+                    start = idx
+                    end = idx + len(original)
+                    valid = True
+
+            if not valid:
+                # Second fallback: search in full chunk text
+                full_chunk_text = chunk["text"]
+                idx = full_chunk_text.find(original)
+                if idx >= 0:
+                    start = idx
+                    end = idx + len(original)
+                    valid = True
+
+            if not valid:
+                continue  # drop unverifiable claim
+
+            claim["location"] = {
+                "chunk_id": chunk_id,
+                "start_char": start,
+                "end_char": end,
+            }
+            # Backward compat string
+            claim["location_str"] = f"{chunk_id}:{start}-{end}"
+            # Global offset for sorting/dedup
+            claim["_global_start"] = chunk["start_char_global"] + start
+
+            # Clean up LLM fields we don't need downstream
+            claim.pop("start_char", None)
+            claim.pop("end_char", None)
+
+            all_raw_claims.append(claim)
+
+    claims_raw_count = len(all_raw_claims)
+
+    # --- Dedupe ---
+    deduped = dedupe_claims(all_raw_claims)
+    claims_deduped_count = len(deduped)
+
+    # Clean internal fields before returning
+    for c in deduped:
+        c.pop("_global_start", None)
+
+    # --- Cache store ---
+    set_cached(text, deduped)
+
+    elapsed_ms = (time.time() - t0) * 1000
+    log.info(
+        "extract_claims doc_hash=%s total_doc_chars=%d num_chunks=%d "
+        "num_paragraphs_scored=%d num_passages_selected=%d llm_input_chars=%d "
+        "llm_calls_count=%d claims_raw_count=%d claims_deduped_count=%d "
+        "cache_hit=False time_ms=%.0f",
+        dh, total_doc_chars, num_chunks, num_paragraphs_scored,
+        num_passages_selected, llm_input_chars, llm_calls_count,
+        claims_raw_count, claims_deduped_count, elapsed_ms,
+    )
+
+    return deduped
 
 
 # ---------------------------------------------------------------------------

@@ -1255,6 +1255,11 @@ const SynapsePage: React.FC = () => {
                   <div style={{ fontSize: '12px', color: '#cccccc', lineHeight: 1.45 }}>
                     {claim.original.length > 120 ? claim.original.slice(0, 120) + '...' : claim.original}
                   </div>
+                  {claim.location_str && (
+                    <div style={{ fontSize: '9px', color: '#555555', marginTop: '4px', fontFamily: 'monospace' }}>
+                      {claim.location_str}
+                    </div>
+                  )}
                   {claim.status === 'pending' && (
                     <div style={{ fontSize: '9px', color: '#555555', marginTop: '4px' }}>Click to verify</div>
                   )}

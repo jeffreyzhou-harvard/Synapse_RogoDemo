@@ -53,12 +53,19 @@ class IngestResponse(BaseModel):
 class ExtractClaimsRequest(BaseModel):
     text: str
 
+class ClaimLocation(BaseModel):
+    chunk_id: str
+    start_char: int
+    end_char: int
+
 class ClaimItem(BaseModel):
     id: str
     original: str
     normalized: str
     type: str
-    location: str = ""
+    location: Optional[ClaimLocation] = None
+    location_str: str = ""  # backward-compat "c0001:120-185"
+    company_ticker: Optional[str] = None
 
 class ExtractClaimsResponse(BaseModel):
     claims: List[ClaimItem]
@@ -333,12 +340,22 @@ def api_extract_claims(req: ExtractClaimsRequest):
     raw_claims = extract_claims(req.text)
     claims = []
     for i, c in enumerate(raw_claims):
+        loc = c.get("location")
+        claim_location = None
+        if isinstance(loc, dict) and "chunk_id" in loc:
+            claim_location = ClaimLocation(
+                chunk_id=loc["chunk_id"],
+                start_char=loc.get("start_char", 0),
+                end_char=loc.get("end_char", 0),
+            )
         claims.append(ClaimItem(
             id=c.get("id", f"claim-{i+1}"),
             original=c.get("original", ""),
             normalized=c.get("normalized", c.get("original", "")),
             type=c.get("type", "categorical"),
-            location=c.get("location", ""),
+            location=claim_location,
+            location_str=c.get("location_str", ""),
+            company_ticker=c.get("company_ticker"),
         ))
     return ExtractClaimsResponse(claims=claims)
 

@@ -1,11 +1,19 @@
 // ─── Synapse Verification Types ──────────────────────────────────────────
 
+export interface ClaimLocation {
+  chunk_id: string;
+  start_char: number;
+  end_char: number;
+}
+
 export interface ExtractedClaim {
   id: string;
   original: string;
   normalized: string;
   type: string;
-  location?: string;
+  location?: ClaimLocation | string;
+  location_str?: string;
+  company_ticker?: string | null;
   status: 'pending' | 'verifying' | 'done' | 'error';
   verification?: VerificationState;
 }

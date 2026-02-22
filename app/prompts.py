@@ -113,50 +113,62 @@ def ticker_detection(claim_text: str) -> str:
 
 
 def claim_extraction(text: str) -> str:
-    """Extract verifiable financial claims from text."""
-    return f"""Extract EVERY discrete, verifiable factual claim from this text. Be thorough — focus on financial and business claims that can be verified against SEC filings, earnings calls, market data, and third-party sources.
+    """Extract verifiable financial claims from text (legacy, single-shot)."""
+    return claim_extraction_chunked("c0000", text)
+
+
+def claim_extraction_chunked(chunk_id: str, passages_text: str) -> str:
+    """Extract verifiable financial claims from a chunk's selected passages.
+
+    The LLM must return character offsets (start_char, end_char) into the
+    provided text so we can validate that claim.original matches the span.
+    """
+    return f"""Extract EVERY discrete, verifiable factual claim from the text below. Be thorough — focus on financial and business claims that can be verified against SEC filings, earnings calls, market data, and third-party sources.
 
 INCLUDE these types of claims:
-- Financial metrics: revenue, margins, EPS, growth rates, profitability figures ("gross margin was 46.2%", "revenue of $94.8 billion")
-- Valuation: multiples, enterprise value, market cap ("trades at 25x earnings", "market cap of $3 trillion")
-- Transactions: M&A deals, IPOs, buybacks with parties, values, dates ("acquired Activision for $68.7B")
-- Regulatory: compliance statements, filing references, capital ratios ("CET1 ratio was 15.0%", "no material litigation pending")
-- Guidance / Forward-looking: projections, targets, timelines ("expects revenue growth of 10-12%", "expects to reach profitability by Q3 2026")
-- Operational: delivery numbers, headcount, market share ("delivered 1.81 million vehicles")
-- Comparative: year-over-year changes, rankings, superlatives ("grew 409% year-over-year", "#1 player in our market")
-- Attribution: claims citing a third-party source ("According to Gartner, the market will grow 15%", "McKinsey estimates 30% cost reduction")
+- Financial metrics: revenue, margins, EPS, growth rates, profitability figures
+- Valuation: multiples, enterprise value, market cap
+- Transactions: M&A deals, IPOs, buybacks with parties, values, dates
+- Regulatory: compliance statements, filing references, capital ratios
+- Guidance / Forward-looking: projections, targets, timelines
+- Operational: delivery numbers, headcount, market share
+- Comparative: year-over-year changes, rankings, superlatives
+- Attribution: claims citing a third-party source
 - CIM / Pitch Deck specific: TAM/SAM/SOM figures, customer retention rates, unit economics, LTV/CAC, ARR, NRR, runway, burn rate
 
 EXCLUDE (do NOT extract):
 - Opinions, subjective analysis, rhetorical questions
 - Vague statements without specific verifiable data points
 - Author biographical info or article metadata
+- Forward-looking safe harbor disclaimers
 
 Rules:
 - Each claim must be a single, atomic, independently verifiable statement
-- Provide the original wording and a normalized version optimized for financial search
+- "original" MUST be the EXACT substring copied from the text below — do NOT paraphrase
+- "start_char" and "end_char" MUST be the character offsets of "original" in the TEXT below (0-indexed, end exclusive)
+- Provide a "normalized" version optimized for financial search
 - Tag type: "financial_metric" | "valuation" | "transaction" | "regulatory" | "guidance" | "attribution" | "comparative" | "operational"
-- For attribution claims, include the cited source in the normalized version
-- For guidance/forward-looking claims, note the projection date and target date
 - Extract company ticker when possible
-- Include approximate location in the text (beginning, middle, end, or paragraph number if discernible)
+
+CHUNK_ID: {chunk_id}
 
 TEXT:
-{text[:8000]}
+{passages_text}
 
 Return ONLY a JSON array:
 [
   {{
     "id": "claim-1",
-    "original": "exact text from source",
+    "original": "exact substring from TEXT above",
     "normalized": "clean searchable version",
     "type": "financial_metric|valuation|transaction|regulatory|guidance|attribution|comparative|operational",
     "company_ticker": "AAPL or null",
-    "location": "beginning|middle|end or paragraph N"
+    "start_char": 0,
+    "end_char": 50
   }}
 ]
 
-Extract 8-25 claims. Be thorough. Return ONLY valid JSON, no markdown."""
+Extract all verifiable claims you find. Return ONLY valid JSON, no markdown."""
 
 
 def decomposition(claim: str) -> str:
