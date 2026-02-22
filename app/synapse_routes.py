@@ -421,18 +421,42 @@ def api_extract_claims(req: ExtractClaimsRequest):
 # ---------------------------------------------------------------------------
 
 @router.post("/verify")
-def api_verify(req: VerifyRequest):
+async def api_verify(req: VerifyRequest):
     """Run the full multi-stage verification pipeline on a single claim.
-    Returns Server-Sent Events (SSE) stream for real-time UI updates."""
+    Returns Server-Sent Events (SSE) stream for real-time UI updates.
+
+    The sync pipeline runs in a thread pool so it never blocks the
+    async event loop — other requests can be served concurrently.
+    """
+    import asyncio, queue, threading
+
     if not req.claim.strip():
         raise HTTPException(status_code=400, detail="Claim is empty")
 
-    def event_stream():
-        for event in run_verification_pipeline(req.claim):
-            yield event.to_sse()
+    event_q: queue.Queue = queue.Queue()
+    _SENTINEL = object()
+
+    def _run_pipeline():
+        try:
+            for event in run_verification_pipeline(req.claim):
+                event_q.put(event.to_sse())
+        except Exception as exc:
+            import json as _json
+            event_q.put(f"data: {_json.dumps({'type': 'error', 'data': {'message': str(exc)}})}\n\n")
+        finally:
+            event_q.put(_SENTINEL)
+
+    async def _async_event_stream():
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, _run_pipeline)
+        while True:
+            item = await loop.run_in_executor(None, event_q.get)
+            if item is _SENTINEL:
+                break
+            yield item
 
     return StreamingResponse(
-        event_stream(),
+        _async_event_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
