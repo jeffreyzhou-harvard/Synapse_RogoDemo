@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { API_BASE, PRELOADED_EXAMPLES } from './constants';
 
 interface PipelineStats {
@@ -41,6 +41,20 @@ const InputBar: React.FC<InputBarProps> = ({
   reportId, onShareTwitter, onViewReport, financialClaims,
 }) => {
   const docInputRef = useRef<HTMLInputElement>(null);
+
+  const urlValidation = useMemo(() => {
+    if (inputMode !== 'url' || !inputValue.trim()) return null;
+    try {
+      const u = new URL(inputValue.trim());
+      if (!['http:', 'https:'].includes(u.protocol)) return { valid: false, msg: 'URL must start with http:// or https://' };
+      if (!u.hostname.includes('.')) return { valid: false, msg: 'Invalid domain — missing top-level domain' };
+      return { valid: true, msg: '' };
+    } catch {
+      if (inputValue.trim().length > 5 && !inputValue.trim().startsWith('http'))
+        return { valid: false, msg: 'URLs should start with http:// or https://' };
+      return null;
+    }
+  }, [inputMode, inputValue]);
 
   if (inputCollapsed) {
     return (
@@ -208,6 +222,11 @@ const InputBar: React.FC<InputBarProps> = ({
                   {isIngesting ? '...' : 'Verify'}
                 </button>
               </div>
+              {urlValidation && !urlValidation.valid && (
+                <div style={{ marginTop: '6px', fontSize: '11px', color: '#c47070', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontWeight: 700 }}>!</span> {urlValidation.msg}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px', justifyContent: 'center' }}>
                 <button className="syn-btn-ghost" onClick={() => docInputRef.current?.click()}
                   style={{ padding: '5px 12px', borderRadius: '2px', letterSpacing: '0.3px' }}>

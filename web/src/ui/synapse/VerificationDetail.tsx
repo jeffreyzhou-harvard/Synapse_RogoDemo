@@ -216,7 +216,31 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           </div>
         ) : (
           /* Pipeline progress while verifying */
-          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          <div>
+            {/* Current stage banner */}
+            {v.currentStep && (
+              <div style={{ marginBottom: '10px', padding: '10px 14px', borderRadius: '8px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="syn-dot-pulse" style={{ width: '6px', height: '6px' }} />
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', textTransform: 'capitalize' }}>
+                      {v.stepLabel || v.currentStep.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <span className="syn-mono" style={{ fontSize: '10px', color: '#555' }}>
+                    Stage {v.completedSteps.length + 1} of 13
+                  </span>
+                </div>
+                <div style={{ height: '3px', backgroundColor: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: '2px', backgroundColor: '#6fad8e',
+                    width: `${Math.round(((v.completedSteps.length + 0.5) / 13) * 100)}%`,
+                    transition: 'width 0.6s ease',
+                  }} />
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
             {['decomposition', 'entity_resolution', 'normalization', 'evidence_retrieval', 'evaluation', 'contradictions', 'consistency', 'plausibility', 'synthesis', 'provenance', 'correction', 'reconciliation', 'risk_signals'].map(step => {
               const isDone = v.completedSteps.includes(step);
               const isCurrent = v.currentStep === step && !isDone;
@@ -235,6 +259,7 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
                 </div>
               );
             })}
+            </div>
           </div>
         )}
 
@@ -291,8 +316,8 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
           </div>
         )}
 
-        {/* Action bar */}
-        {v.completedSteps.includes('correction') && (
+        {/* Action bar — available as soon as verdict exists */}
+        {v.overallVerdict && (
           <div style={{
             marginTop: '10px', padding: '10px 14px', borderRadius: '8px',
             border: '1px solid #1a1a1a', backgroundColor: '#050505',
@@ -502,7 +527,34 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
             {v.subclaims.length === 0 && selectedClaim.status === 'verifying' && (
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div className="syn-spinner" style={{ width: '24px', height: '24px', margin: '0 auto 10px' }} />
-                <div style={{ fontSize: '12px', color: '#fff' }}>Decomposing claim...</div>
+                <div style={{ fontSize: '12px', color: '#fff', marginBottom: '6px' }}>Decomposing claim into atomic sub-claims...</div>
+                <div style={{ fontSize: '10px', color: '#555', maxWidth: '300px', margin: '0 auto', lineHeight: 1.5 }}>
+                  Breaking down the claim into independently verifiable assertions
+                </div>
+              </div>
+            )}
+            {v.subclaims.length > 0 && selectedClaim.status === 'verifying' && !v.subclaims.every(sc => sc.verdict) && (
+              <div style={{ padding: '10px 14px', marginBottom: '8px', borderRadius: '8px', border: '1px solid #1a1a1a', backgroundColor: '#050505', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span className="syn-dot-pulse" />
+                <span style={{ fontSize: '11px', color: '#888' }}>
+                  {v.completedSteps.includes('evaluation')
+                    ? `Synthesizing verdicts — ${v.subclaims.filter(sc => sc.verdict).length}/${v.subclaims.length} complete`
+                    : v.completedSteps.includes('evidence_retrieval')
+                    ? 'Evaluating evidence quality...'
+                    : v.currentStep
+                    ? `${v.stepLabel || v.currentStep.replace(/_/g, ' ')}...`
+                    : 'Processing...'}
+                </span>
+                <div style={{ flex: 1, height: '3px', backgroundColor: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: '2px', backgroundColor: '#555',
+                    width: `${Math.round((v.completedSteps.length / 13) * 100)}%`,
+                    transition: 'width 0.5s ease',
+                  }} />
+                </div>
+                <span className="syn-mono" style={{ fontSize: '9px', color: '#444' }}>
+                  {v.completedSteps.length}/13
+                </span>
               </div>
             )}
           </div>
@@ -542,8 +594,27 @@ const VerificationDetail: React.FC<VerificationDetailProps> = ({
               </div>
             )}
             {v.evidence.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#555', fontSize: '12px' }}>
-                {selectedClaim.status === 'verifying' ? 'Searching for evidence...' : 'No evidence collected yet'}
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                {selectedClaim.status === 'verifying' ? (
+                  <>
+                    <div className="syn-spinner" style={{ width: '20px', height: '20px', margin: '0 auto 12px' }} />
+                    <div style={{ fontSize: '12px', color: '#fff', marginBottom: '6px' }}>Searching for evidence...</div>
+                    <div style={{ fontSize: '10px', color: '#555', maxWidth: '280px', margin: '0 auto', lineHeight: 1.5 }}>
+                      Querying SEC EDGAR, XBRL, earnings calls, FRED, market data, and adversarial search
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: '#555', fontSize: '12px' }}>No evidence collected yet</div>
+                )}
+              </div>
+            )}
+            {v.evidence.length > 0 && selectedClaim.status === 'verifying' && (
+              <div style={{ padding: '8px 12px', marginBottom: '10px', borderRadius: '6px', backgroundColor: '#050505', border: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="syn-dot-pulse" />
+                <span style={{ fontSize: '11px', color: '#888' }}>
+                  {v.evidence.length} piece{v.evidence.length !== 1 ? 's' : ''} of evidence collected
+                  {!v.completedSteps.includes('evidence_retrieval') && ' — still searching...'}
+                </span>
               </div>
             )}
           </div>

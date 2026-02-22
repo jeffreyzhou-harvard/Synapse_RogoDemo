@@ -45,6 +45,13 @@ const SynapsePage: React.FC = () => {
   const [shareToast, setShareToast] = useState('');
   const [reportId, setReportId] = useState<string | null>(null);
 
+  // Error toast state
+  const [errorToast, setErrorToast] = useState('');
+  const showError = useCallback((msg: string) => {
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(''), 5000);
+  }, []);
+
   // Agent orchestration state
   const [agentChips, setAgentChips] = useState<AgentChip[]>([]);
   const [pipelineStats, setPipelineStats] = useState({ steps: 0, apiCalls: 0, services: new Set<string>(), sources: 0, durationMs: 0 });
@@ -156,6 +163,7 @@ const SynapsePage: React.FC = () => {
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
         addTrace(`Ingestion failed: ${err.detail}`, 'error');
+        showError(`Ingestion failed: ${err.detail}`);
         setIsIngesting(false); return;
       }
       const data = await resp.json();
@@ -165,10 +173,12 @@ const SynapsePage: React.FC = () => {
       await extractClaims(data.text);
       setInputCollapsed(true);
     } catch (e) {
-      addTrace(`Network error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+      const msg = e instanceof Error ? e.message : 'Unknown network error';
+      addTrace(`Network error: ${msg}`, 'error');
+      showError(`Network error: ${msg}`);
     }
     setIsIngesting(false);
-  }, [inputValue, addTrace]);
+  }, [inputValue, addTrace, showError]);
 
   // ─── Extract Claims ──────────────────────────────────────────────────
 
@@ -179,7 +189,7 @@ const SynapsePage: React.FC = () => {
     addTrace('Extracting claims...', 'step', 0, 'reasoning');
     try {
       const resp = await fetch(`${API_BASE}/api/extract-claims`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (!resp.ok) { addTrace('Claim extraction failed', 'error'); setIsExtracting(false); return; }
+      if (!resp.ok) { addTrace('Claim extraction failed', 'error'); showError('Claim extraction failed — try again'); setIsExtracting(false); return; }
       const data = await resp.json();
       const extracted: ExtractedClaim[] = (data.claims || []).map((c: any) => ({ ...c, status: 'pending' as const }));
       setClaims(extracted);
@@ -187,10 +197,12 @@ const SynapsePage: React.FC = () => {
       addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'reasoning');
       extracted.forEach((c, i) => addTrace(`Claim ${i + 1}: "${c.original.slice(0, 80)}${c.original.length > 80 ? '...' : ''}"`, 'info', 1));
     } catch (e) {
-      addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      addTrace(`Error: ${msg}`, 'error');
+      showError(`Extraction error: ${msg}`);
     }
     setIsExtracting(false);
-  }, [addTrace, completeChip]);
+  }, [addTrace, completeChip, showError]);
 
   // ─── Verify Single Claim (SSE) ──────────────────────────────────────
 
@@ -212,7 +224,7 @@ const SynapsePage: React.FC = () => {
 
     try {
       const resp = await fetch(`${API_BASE}/api/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: claim.normalized || claim.original }) });
-      if (!resp.ok) { addTrace('Verification failed', 'error'); setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c)); return; }
+      if (!resp.ok) { addTrace('Verification failed', 'error'); showError('Verification failed — click claim to retry'); setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c)); return; }
 
       const reader = resp.body?.getReader();
       if (!reader) return;
@@ -345,10 +357,12 @@ const SynapsePage: React.FC = () => {
       }
       setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'done' as const } : c));
     } catch (e) {
-      addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      addTrace(`Error: ${msg}`, 'error');
+      showError(`Verification error: ${msg}`);
       setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c));
     }
-  }, [claims, addTrace, activateChip, completeChip, bumpApiCalls]);
+  }, [claims, addTrace, showError, activateChip, completeChip, bumpApiCalls]);
 
   // ─── Verify All ─────────────────────────────────────────────────────
 
@@ -530,7 +544,7 @@ const SynapsePage: React.FC = () => {
         )}
       </div>
 
-      {/* ═══ Share Toast ══════════════════════════════════════════════════ */}
+      {/* ═══ Toasts ═══════════════════════════════════════════════════════ */}
       {shareToast && (
         <div style={{
           position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
@@ -539,6 +553,23 @@ const SynapsePage: React.FC = () => {
           boxShadow: '0 4px 20px rgba(255,255,255,0.15)',
         }} className="syn-fade">
           {shareToast}
+        </div>
+      )}
+      {errorToast && (
+        <div
+          role="alert"
+          onClick={() => setErrorToast('')}
+          style={{
+            position: 'fixed', top: '16px', right: '16px', zIndex: 200,
+            padding: '12px 20px', borderRadius: '8px', maxWidth: '400px',
+            backgroundColor: '#140e0e', border: '1px solid #2a1a1a', color: '#c47070',
+            fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', gap: '10px',
+          }} className="syn-fade">
+          <span style={{ fontSize: '14px', flexShrink: 0 }}>!</span>
+          <span>{errorToast}</span>
+          <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#555', flexShrink: 0 }}>dismiss</span>
         </div>
       )}
     </div>
