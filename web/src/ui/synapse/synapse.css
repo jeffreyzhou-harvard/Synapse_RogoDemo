@@ -1,12 +1,135 @@
 /* ═══ Synapse Design System ═══════════════════════════════════════════════ */
 
+/* ── Theme Variables ─────────────────────────────────────────────────── */
+.syn-root {
+  /* Backgrounds */
+  --syn-bg: #000;
+  --syn-bg-raised: #0a0a0a;
+  --syn-bg-sunken: #050505;
+  --syn-bg-input: #080808;
+  --syn-bg-hover: #111;
+  --syn-bg-active: #1a1a1a;
+
+  /* Borders */
+  --syn-border: #1a1a1a;
+  --syn-border-strong: #333;
+  --syn-border-hover: #2a2a2a;
+  --syn-border-subtle: #111;
+
+  /* Text */
+  --syn-text: #e0e0e0;
+  --syn-text-heading: #fff;
+  --syn-text-secondary: #ccc;
+  --syn-text-tertiary: #888;
+  --syn-text-muted: #555;
+  --syn-text-dim: #444;
+  --syn-text-ghost: #333;
+
+  /* Semantic tint surfaces */
+  --syn-green-bg: #0d1410;
+  --syn-green-border: #1a2a22;
+  --syn-red-bg: #140e0e;
+  --syn-red-border: #2a1a1a;
+  --syn-amber-bg: #141210;
+  --syn-amber-border: #2a2518;
+  --syn-blue-bg: #0e0e14;
+  --syn-blue-border: #1a1a2a;
+  --syn-teal-bg: #0e1414;
+  --syn-teal-border: #1a2222;
+  --syn-purple-bg: #120e14;
+  --syn-purple-border: #2a1a2a;
+  --syn-orange-bg: #14110e;
+  --syn-orange-border: #2a2018;
+
+  /* Components */
+  --syn-scrollbar-thumb: #222;
+  --syn-scrollbar-hover: #333;
+  --syn-selection-bg: rgba(255,255,255,0.2);
+  --syn-spinner-track: #1a1a1a;
+  --syn-spinner-head: #fff;
+  --syn-skeleton-from: #111;
+  --syn-skeleton-via: #1a1a1a;
+  --syn-dot-color: #fff;
+  --syn-glow: rgba(255,255,255,0.2);
+  --syn-glow-strong: rgba(255,255,255,0.4);
+  --syn-shadow: rgba(0,0,0,0.5);
+
+  /* Primary button */
+  --syn-btn-primary-bg: #fff;
+  --syn-btn-primary-text: #000;
+  --syn-btn-primary-hover: #e5e5e5;
+  --syn-btn-primary-border: #333;
+  --syn-btn-primary-outline: #fff;
+}
+
+.syn-root.syn-light {
+  /* Backgrounds */
+  --syn-bg: #f5f5f7;
+  --syn-bg-raised: #ffffff;
+  --syn-bg-sunken: #f0f0f2;
+  --syn-bg-input: #ffffff;
+  --syn-bg-hover: #eeeef0;
+  --syn-bg-active: #e5e5e8;
+
+  /* Borders */
+  --syn-border: #e0e0e2;
+  --syn-border-strong: #bbb;
+  --syn-border-hover: #ccc;
+  --syn-border-subtle: #eee;
+
+  /* Text */
+  --syn-text: #333;
+  --syn-text-heading: #111;
+  --syn-text-secondary: #444;
+  --syn-text-tertiary: #666;
+  --syn-text-muted: #999;
+  --syn-text-dim: #bbb;
+  --syn-text-ghost: #ddd;
+
+  /* Semantic tint surfaces */
+  --syn-green-bg: #edf7f0;
+  --syn-green-border: #c5e0cc;
+  --syn-red-bg: #fdf0f0;
+  --syn-red-border: #e5c5c5;
+  --syn-amber-bg: #fdf8ee;
+  --syn-amber-border: #e0d5b5;
+  --syn-blue-bg: #eff0f8;
+  --syn-blue-border: #c5c8e0;
+  --syn-teal-bg: #edf5f5;
+  --syn-teal-border: #c5d8d8;
+  --syn-purple-bg: #f3eff8;
+  --syn-purple-border: #d5c5e0;
+  --syn-orange-bg: #fdf5ee;
+  --syn-orange-border: #e0d0b5;
+
+  /* Components */
+  --syn-scrollbar-thumb: #ccc;
+  --syn-scrollbar-hover: #aaa;
+  --syn-selection-bg: rgba(0,0,0,0.12);
+  --syn-spinner-track: #e0e0e2;
+  --syn-spinner-head: #333;
+  --syn-skeleton-from: #e8e8ea;
+  --syn-skeleton-via: #f2f2f4;
+  --syn-dot-color: #333;
+  --syn-glow: rgba(0,0,0,0.06);
+  --syn-glow-strong: rgba(0,0,0,0.12);
+  --syn-shadow: rgba(0,0,0,0.1);
+
+  /* Primary button */
+  --syn-btn-primary-bg: #111;
+  --syn-btn-primary-text: #fff;
+  --syn-btn-primary-hover: #333;
+  --syn-btn-primary-border: #333;
+  --syn-btn-primary-outline: #111;
+}
+
 /* ── Animations ───────────────────────────────────────────────────────── */
 @keyframes syn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes syn-slide-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes syn-slide-h { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes syn-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes syn-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-@keyframes syn-glow { 0%, 100% { box-shadow: 0 0 8px rgba(255,255,255,0.2); } 50% { box-shadow: 0 0 20px rgba(255,255,255,0.4); } }
+@keyframes syn-glow { 0%, 100% { box-shadow: 0 0 8px var(--syn-glow); } 50% { box-shadow: 0 0 20px var(--syn-glow-strong); } }
 @keyframes syn-verdict-pop { 0% { transform: scale(0.8); opacity: 0; } 50% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
 @keyframes syn-agent-pulse {
   0% { box-shadow: 0 0 0 0 var(--agent-glow); }
@@ -22,27 +145,27 @@
 /* ── Global Synapse Scope ─────────────────────────────────────────────── */
 .syn-root {
   height: 100vh;
-  background-color: #000;
-  color: #e0e0e0;
+  background-color: var(--syn-bg);
+  color: var(--syn-text);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.syn-root ::selection { background: rgba(255,255,255,0.2); }
+.syn-root ::selection { background: var(--syn-selection-bg); }
 .syn-root * { box-sizing: border-box; }
 .syn-root ::-webkit-scrollbar { width: 5px; }
 .syn-root ::-webkit-scrollbar-track { background: transparent; }
-.syn-root ::-webkit-scrollbar-thumb { background: #222; border-radius: 3px; }
-.syn-root ::-webkit-scrollbar-thumb:hover { background: #333; }
+.syn-root ::-webkit-scrollbar-thumb { background: var(--syn-scrollbar-thumb); border-radius: 3px; }
+.syn-root ::-webkit-scrollbar-thumb:hover { background: var(--syn-scrollbar-hover); }
 .syn-root .scroll-ticker-wrap:hover > div { animation-play-state: paused; }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 .syn-btn {
-  border: 1px solid #222;
+  border: 1px solid var(--syn-scrollbar-thumb);
   background: transparent;
-  color: #888;
+  color: var(--syn-text-tertiary);
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
@@ -51,61 +174,61 @@
   align-items: center;
   gap: 5px;
 }
-.syn-btn:hover { border-color: #444; color: #fff; }
-.syn-btn:focus-visible { outline: 1px solid #666; outline-offset: 1px; }
+.syn-btn:hover { border-color: var(--syn-text-dim); color: var(--syn-text-heading); }
+.syn-btn:focus-visible { outline: 1px solid var(--syn-text-tertiary); outline-offset: 1px; }
 
 .syn-btn-primary {
-  border: 1px solid #333;
-  background: #fff;
-  color: #000;
+  border: 1px solid var(--syn-btn-primary-border);
+  background: var(--syn-btn-primary-bg);
+  color: var(--syn-btn-primary-text);
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s;
 }
-.syn-btn-primary:hover { background: #e5e5e5; }
-.syn-btn-primary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.syn-btn-primary:hover { background: var(--syn-btn-primary-hover); }
+.syn-btn-primary:focus-visible { outline: 2px solid var(--syn-btn-primary-outline); outline-offset: 2px; }
 .syn-btn-primary:disabled { opacity: 0.3; cursor: default; }
 
 .syn-btn-ghost {
-  border: 1px solid #1a1a1a;
+  border: 1px solid var(--syn-border);
   background: transparent;
-  color: #444;
+  color: var(--syn-text-dim);
   font-size: 10px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
 }
-.syn-btn-ghost:hover { border-color: #333; color: #888; }
-.syn-btn-ghost:focus-visible { outline: 1px solid #555; outline-offset: 1px; }
+.syn-btn-ghost:hover { border-color: var(--syn-border-strong); color: var(--syn-text-tertiary); }
+.syn-btn-ghost:focus-visible { outline: 1px solid var(--syn-text-muted); outline-offset: 1px; }
 
 .syn-btn-danger {
-  border: 1px solid #3a1a1a;
+  border: 1px solid var(--syn-red-border);
   background: transparent;
-  color: #f87171;
+  color: #c47070;
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
 }
-.syn-btn-danger:hover { background: #1a0808; }
+.syn-btn-danger:hover { background: var(--syn-red-bg); }
 
 .syn-btn-success {
-  border: 1px solid #1a2a1a;
+  border: 1px solid var(--syn-green-border);
   background: transparent;
-  color: #4ade80;
+  color: #6fad8e;
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
 }
-.syn-btn-success:hover { background: #081208; }
+.syn-btn-success:hover { background: var(--syn-green-bg); }
 
 /* ── Mode Toggle ──────────────────────────────────────────────────────── */
 .syn-mode-btn {
   padding: 5px 16px;
-  border: 1px solid #141414;
+  border: 1px solid var(--syn-border-subtle);
   background: transparent;
-  color: #444;
+  color: var(--syn-text-dim);
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
@@ -113,31 +236,31 @@
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
-.syn-mode-btn.active { border-color: #333; background: #111; color: #ccc; }
+.syn-mode-btn.active { border-color: var(--syn-border-strong); background: var(--syn-bg-hover); color: var(--syn-text-secondary); }
 .syn-mode-btn:first-child { border-radius: 2px 0 0 2px; }
 .syn-mode-btn:last-child { border-radius: 0 2px 2px 0; }
-.syn-mode-btn:focus-visible { outline: 1px solid #555; outline-offset: 1px; }
+.syn-mode-btn:focus-visible { outline: 1px solid var(--syn-text-muted); outline-offset: 1px; }
 
 /* ── Inputs ───────────────────────────────────────────────────────────── */
 .syn-input {
   flex: 1;
   padding: 11px 14px;
-  background: #080808;
-  border: 1px solid #1a1a1a;
-  color: #ccc;
+  background: var(--syn-bg-input);
+  border: 1px solid var(--syn-border);
+  color: var(--syn-text-secondary);
   font-size: 12px;
   outline: none;
   transition: border-color 0.2s;
 }
-.syn-input:focus { border-color: #333; }
-.syn-input::placeholder { color: #444; }
+.syn-input:focus { border-color: var(--syn-border-strong); }
+.syn-input::placeholder { color: var(--syn-text-dim); }
 
 .syn-textarea {
   flex: 1;
   padding: 11px 14px;
-  background: #080808;
-  border: 1px solid #1a1a1a;
-  color: #ccc;
+  background: var(--syn-bg-input);
+  border: 1px solid var(--syn-border);
+  color: var(--syn-text-secondary);
   font-size: 12px;
   outline: none;
   resize: vertical;
@@ -145,8 +268,8 @@
   line-height: 1.6;
   transition: border-color 0.2s;
 }
-.syn-textarea:focus { border-color: #333; }
-.syn-textarea::placeholder { color: #444; }
+.syn-textarea:focus { border-color: var(--syn-border-strong); }
+.syn-textarea::placeholder { color: var(--syn-text-dim); }
 
 /* ── Cards ────────────────────────────────────────────────────────────── */
 .syn-card {
@@ -154,63 +277,63 @@
   margin-bottom: 4px;
   border-radius: 8px;
   cursor: pointer;
-  border: 1px solid #1a1a1a;
-  background: #0a0a0a;
+  border: 1px solid var(--syn-border);
+  background: var(--syn-bg-raised);
   transition: all 0.2s;
 }
-.syn-card:hover { border-color: #2a2a2a; }
-.syn-card:focus-visible { outline: 1px solid #555; outline-offset: 1px; }
-.syn-card.selected { border-color: #333; }
+.syn-card:hover { border-color: var(--syn-border-hover); }
+.syn-card:focus-visible { outline: 1px solid var(--syn-text-muted); outline-offset: 1px; }
+.syn-card.selected { border-color: var(--syn-border-strong); }
 
 .syn-evidence-card {
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid #1a1a1a;
-  background: #0a0a0a;
+  border: 1px solid var(--syn-border);
+  background: var(--syn-bg-raised);
   cursor: pointer;
   transition: border-color 0.2s;
 }
-.syn-evidence-card:hover { border-color: #333; }
-.syn-evidence-card.expanded { border-color: #333; }
-.syn-evidence-card.counter { background: #1a0a0a; border-color: #3a1a1a; }
+.syn-evidence-card:hover { border-color: var(--syn-border-strong); }
+.syn-evidence-card.expanded { border-color: var(--syn-border-strong); }
+.syn-evidence-card.counter { background: var(--syn-red-bg); border-color: var(--syn-red-border); }
 
 /* ── Links ────────────────────────────────────────────────────────────── */
 .syn-link {
   font-size: 11px;
-  color: #6bccc8;
+  color: #6a9f9c;
   text-decoration: none;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
   border-radius: 4px;
-  background: #0d1a1a;
-  border: 1px solid #1a2a2a;
+  background: var(--syn-teal-bg);
+  border: 1px solid var(--syn-teal-border);
   transition: all 0.15s;
 }
-.syn-link:hover { border-color: #2a4a4a; color: #8eeee8; }
-.syn-link:focus-visible { outline: 1px solid #6bccc8; outline-offset: 1px; }
+.syn-link:hover { border-color: #2a3a3a; color: #8ab8b4; }
+.syn-link:focus-visible { outline: 1px solid #6a9f9c; outline-offset: 1px; }
 
 /* ── Tab Bar ──────────────────────────────────────────────────────────── */
 .syn-tab {
   flex: 1;
-  padding: 7px 6px;
+  padding: 10px 8px;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: #555;
-  font-size: 10px;
+  color: var(--syn-text-muted);
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
 }
-.syn-tab:hover { color: #999; }
-.syn-tab.active { border-bottom-color: #fff; color: #fff; }
-.syn-tab:focus-visible { outline: 1px solid #555; outline-offset: -2px; }
+.syn-tab:hover { color: var(--syn-text-tertiary); }
+.syn-tab.active { border-bottom-color: var(--syn-text-heading); color: var(--syn-text-heading); }
+.syn-tab:focus-visible { outline: 1px solid var(--syn-text-muted); outline-offset: -2px; }
 
 /* ── Example Rows ─────────────────────────────────────────────────────── */
 .syn-example-row {
@@ -224,9 +347,10 @@
   align-items: center;
   gap: 12px;
   border: none;
+  color: inherit;
 }
-.syn-example-row:hover { background: #0a0a0a; }
-.syn-example-row:focus-visible { outline: 1px solid #333; outline-offset: -1px; }
+.syn-example-row:hover { background: var(--syn-bg-raised); }
+.syn-example-row:focus-visible { outline: 1px solid var(--syn-border-strong); outline-offset: -1px; }
 
 /* ── Utility ──────────────────────────────────────────────────────────── */
 .syn-fade { animation: syn-fade 0.2s ease; }
@@ -236,8 +360,8 @@
 .syn-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #1a1a1a;
-  border-top-color: #fff;
+  border: 2px solid var(--syn-spinner-track);
+  border-top-color: var(--syn-spinner-head);
   border-radius: 50%;
   animation: syn-spin 0.8s linear infinite;
 }
@@ -246,13 +370,13 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--syn-dot-color);
   animation: syn-pulse 1.2s ease-in-out infinite;
 }
 
 /* ── Loading Skeleton ─────────────────────────────────────────────────── */
 .syn-skeleton {
-  background: linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
+  background: linear-gradient(90deg, var(--syn-skeleton-from) 25%, var(--syn-skeleton-via) 50%, var(--syn-skeleton-from) 75%);
   background-size: 200% 100%;
   animation: syn-skeleton 1.5s ease-in-out infinite;
   border-radius: 4px;
@@ -265,7 +389,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #000;
+  background: var(--syn-bg);
   padding: 40px;
   text-align: center;
 }
@@ -284,5 +408,35 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #555;
+  color: var(--syn-text-muted);
 }
+
+/* ── Theme Toggle ─────────────────────────────────────────────────────── */
+.syn-theme-toggle {
+  width: 32px;
+  height: 18px;
+  border-radius: 10px;
+  border: 1px solid var(--syn-border);
+  background: var(--syn-bg-raised);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.syn-theme-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--syn-text-muted);
+  transition: transform 0.2s;
+}
+.syn-root.syn-light .syn-theme-toggle::after {
+  transform: translateX(14px);
+  background: var(--syn-text-tertiary);
+}
+.syn-theme-toggle:hover { border-color: var(--syn-border-strong); }
+.syn-theme-toggle:hover::after { background: var(--syn-text-tertiary); }

@@ -40,10 +40,20 @@ const SynapsePage: React.FC = () => {
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [verdictExpanded, setVerdictExpanded] = useState(false);
   const [reasoningCollapsed, setReasoningCollapsed] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try { return (localStorage.getItem('synapse-theme') as 'dark' | 'light') || 'dark'; } catch { return 'dark'; }
+  });
 
   // Share state
   const [shareToast, setShareToast] = useState('');
   const [reportId, setReportId] = useState<string | null>(null);
+
+  // Error toast state
+  const [errorToast, setErrorToast] = useState('');
+  const showError = useCallback((msg: string) => {
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(''), 5000);
+  }, []);
 
   // Agent orchestration state
   const [agentChips, setAgentChips] = useState<AgentChip[]>([]);
@@ -156,6 +166,7 @@ const SynapsePage: React.FC = () => {
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
         addTrace(`Ingestion failed: ${err.detail}`, 'error');
+        showError(`Ingestion failed: ${err.detail}`);
         setIsIngesting(false); return;
       }
       const data = await resp.json();
@@ -165,10 +176,12 @@ const SynapsePage: React.FC = () => {
       await extractClaims(data.text);
       setInputCollapsed(true);
     } catch (e) {
-      addTrace(`Network error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+      const msg = e instanceof Error ? e.message : 'Unknown network error';
+      addTrace(`Network error: ${msg}`, 'error');
+      showError(`Network error: ${msg}`);
     }
     setIsIngesting(false);
-  }, [inputValue, addTrace]);
+  }, [inputValue, addTrace, showError]);
 
   // ─── Extract Claims ──────────────────────────────────────────────────
 
@@ -179,7 +192,7 @@ const SynapsePage: React.FC = () => {
     addTrace('Extracting claims...', 'step', 0, 'reasoning');
     try {
       const resp = await fetch(`${API_BASE}/api/extract-claims`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (!resp.ok) { addTrace('Claim extraction failed', 'error'); setIsExtracting(false); return; }
+      if (!resp.ok) { addTrace('Claim extraction failed', 'error'); showError('Claim extraction failed — try again'); setIsExtracting(false); return; }
       const data = await resp.json();
       const extracted: ExtractedClaim[] = (data.claims || []).map((c: any) => ({ ...c, status: 'pending' as const }));
       setClaims(extracted);
@@ -187,10 +200,12 @@ const SynapsePage: React.FC = () => {
       addTrace(`${extracted.length} verifiable claims extracted`, 'success', 0, 'reasoning');
       extracted.forEach((c, i) => addTrace(`Claim ${i + 1}: "${c.original.slice(0, 80)}${c.original.length > 80 ? '...' : ''}"`, 'info', 1));
     } catch (e) {
-      addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      addTrace(`Error: ${msg}`, 'error');
+      showError(`Extraction error: ${msg}`);
     }
     setIsExtracting(false);
-  }, [addTrace, completeChip]);
+  }, [addTrace, completeChip, showError]);
 
   // ─── Verify Single Claim (SSE) ──────────────────────────────────────
 
@@ -212,7 +227,7 @@ const SynapsePage: React.FC = () => {
 
     try {
       const resp = await fetch(`${API_BASE}/api/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: claim.normalized || claim.original }) });
-      if (!resp.ok) { addTrace('Verification failed', 'error'); setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c)); return; }
+      if (!resp.ok) { addTrace('Verification failed', 'error'); showError('Verification failed — click claim to retry'); setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c)); return; }
 
       const reader = resp.body?.getReader();
       if (!reader) return;
@@ -345,15 +360,24 @@ const SynapsePage: React.FC = () => {
       }
       setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'done' as const } : c));
     } catch (e) {
-      addTrace(`Error: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      addTrace(`Error: ${msg}`, 'error');
+      showError(`Verification error: ${msg}`);
       setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'error' as const } : c));
     }
-  }, [claims, addTrace, activateChip, completeChip, bumpApiCalls]);
+  }, [claims, addTrace, showError, activateChip, completeChip, bumpApiCalls]);
 
   // ─── Verify All ─────────────────────────────────────────────────────
 
   const verifyAll = useCallback(async () => {
-    await Promise.all(claims.filter(c => c.status === 'pending').map(c => verifyClaim(c.id)));
+    const pending = claims.filter(c => c.status === 'pending');
+    const MAX_CONCURRENT = 3;
+
+    // Process in batches to avoid overwhelming the backend and hitting rate limits
+    for (let i = 0; i < pending.length; i += MAX_CONCURRENT) {
+      const batch = pending.slice(i, i + MAX_CONCURRENT);
+      await Promise.all(batch.map(c => verifyClaim(c.id)));
+    }
   }, [claims, verifyClaim]);
 
   // ─── File Uploads ───────────────────────────────────────────────────
@@ -386,27 +410,27 @@ const SynapsePage: React.FC = () => {
   // ─── Render ──────────────────────────────────────────────────────────
 
   return (
-    <div className="syn-root">
+    <div className={`syn-root ${theme === 'light' ? 'syn-light' : ''}`}>
 
       {/* ═══ Header ═══════════════════════════════════════════════════════ */}
       <header style={{
-        padding: '6px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid #1a1a1a', flexShrink: 0, backgroundColor: '#000',
+        padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: '1px solid var(--syn-border)', flexShrink: 0, backgroundColor: 'var(--syn-bg)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <img src="/synapse-logo.svg" alt="Synapse" style={{ width: '24px', height: '24px', opacity: 0.9 }} />
           <div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>SYNAPSE</div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--syn-text-heading)', letterSpacing: '-0.5px' }}>SYNAPSE</div>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: 'var(--syn-text-muted)', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
               Independent Verification Infrastructure
             </div>
           </div>
-          <div className="syn-mono" style={{ marginLeft: '12px', padding: '2px 8px', borderRadius: '2px', border: '1px solid #222', fontSize: '9px', fontWeight: 600, color: '#555', letterSpacing: '0.8px' }}>v2.0</div>
+          <div className="syn-mono" style={{ marginLeft: '12px', padding: '2px 8px', borderRadius: '2px', border: '1px solid var(--syn-border)', fontSize: '9px', fontWeight: 600, color: 'var(--syn-text-muted)', letterSpacing: '0.8px' }}>v2.0</div>
         </div>
 
         {hasSummary && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} className="syn-fade">
-            <span style={{ fontSize: '11px', color: '#666' }}>{claims.length} claims analyzed:</span>
+            <span style={{ fontSize: '11px', color: 'var(--syn-text-tertiary)' }}>{claims.length} claims analyzed:</span>
             {Object.entries(verdictCounts).map(([verdict, count]) => {
               const vc = VERDICT_COLORS[verdict] || VERDICT_COLORS.unsupported;
               return (
@@ -419,18 +443,29 @@ const SynapsePage: React.FC = () => {
           </div>
         )}
 
-        <button className="syn-btn" onClick={() => setShowTrace(p => !p)}
-          style={{
-            padding: '4px 10px', borderRadius: '6px',
-            borderColor: showTrace ? '#333' : '#1a1a1a',
-            backgroundColor: showTrace ? '#111' : 'transparent',
-            color: showTrace ? '#fff' : '#555',
-            fontSize: '10px', fontWeight: 700,
-          }}>
-          <span className={selectedClaim?.status === 'verifying' ? 'syn-dot-pulse' : undefined}
-            style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: traceLines.length > 0 ? '#fff' : '#555' }} />
-          TRACE {traceLines.length > 0 && `(${traceLines.length})`}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className="syn-theme-toggle"
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            onClick={() => {
+              const next = theme === 'dark' ? 'light' : 'dark';
+              setTheme(next);
+              try { localStorage.setItem('synapse-theme', next); } catch {}
+            }}
+          />
+          <button className="syn-btn" onClick={() => setShowTrace(p => !p)}
+            style={{
+              padding: '4px 10px', borderRadius: '6px',
+              borderColor: showTrace ? 'var(--syn-border-strong)' : 'var(--syn-border)',
+              backgroundColor: showTrace ? 'var(--syn-bg-hover)' : 'transparent',
+              color: showTrace ? 'var(--syn-text-heading)' : 'var(--syn-text-muted)',
+              fontSize: '10px', fontWeight: 700,
+            }}>
+            <span className={selectedClaim?.status === 'verifying' ? 'syn-dot-pulse' : undefined}
+              style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: traceLines.length > 0 ? 'var(--syn-text-heading)' : 'var(--syn-text-muted)' }} />
+            TRACE {traceLines.length > 0 && `(${traceLines.length})`}
+          </button>
+        </div>
       </header>
 
       {/* ═══ Input Bar ════════════════════════════════════════════════════ */}
@@ -495,7 +530,7 @@ const SynapsePage: React.FC = () => {
         )}
 
         {/* ─── Center: Verification Detail ──────────────────────────── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <VerificationDetail
             selectedClaim={selectedClaim || null}
             v={v}
@@ -523,15 +558,33 @@ const SynapsePage: React.FC = () => {
         )}
       </div>
 
-      {/* ═══ Share Toast ══════════════════════════════════════════════════ */}
+      {/* ═══ Toasts ═══════════════════════════════════════════════════════ */}
       {shareToast && (
         <div style={{
           position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-          padding: '10px 20px', borderRadius: '8px', backgroundColor: '#fff', color: '#000',
+          padding: '10px 20px', borderRadius: '8px',
+          backgroundColor: 'var(--syn-btn-primary-bg)', color: 'var(--syn-btn-primary-text)',
           fontSize: '12px', fontWeight: 700, zIndex: 100,
-          boxShadow: '0 4px 20px rgba(255,255,255,0.15)',
+          boxShadow: '0 4px 20px var(--syn-shadow)',
         }} className="syn-fade">
           {shareToast}
+        </div>
+      )}
+      {errorToast && (
+        <div
+          role="alert"
+          onClick={() => setErrorToast('')}
+          style={{
+            position: 'fixed', top: '16px', right: '16px', zIndex: 200,
+            padding: '12px 20px', borderRadius: '8px', maxWidth: '400px',
+            backgroundColor: 'var(--syn-red-bg)', border: '1px solid var(--syn-red-border)', color: '#c47070',
+            fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 4px 24px var(--syn-shadow)',
+            display: 'flex', alignItems: 'center', gap: '10px',
+          }} className="syn-fade">
+          <span style={{ fontSize: '14px', flexShrink: 0 }}>!</span>
+          <span>{errorToast}</span>
+          <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--syn-text-muted)', flexShrink: 0 }}>dismiss</span>
         </div>
       )}
     </div>

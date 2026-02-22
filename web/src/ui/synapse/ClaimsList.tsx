@@ -24,11 +24,11 @@ interface ClaimsListProps {
 }
 
 const CLAIM_TYPE_CONFIG: Record<string, { color: string; label: string }> = {
-  financial_metric: { color: '#4ade80', label: 'Metric' },
-  valuation:        { color: '#a78bfa', label: 'Valuation' },
-  transaction:      { color: '#6b9bd2', label: 'Transaction' },
-  regulatory:       { color: '#d4af37', label: 'Regulatory' },
-  guidance:         { color: '#fbbf24', label: 'Guidance' },
+  financial_metric: { color: '#6fad8e', label: 'Metric' },
+  valuation:        { color: '#8a7ab5', label: 'Valuation' },
+  transaction:      { color: '#7090aa', label: 'Transaction' },
+  regulatory:       { color: '#a89050', label: 'Regulatory' },
+  guidance:         { color: '#b09555', label: 'Guidance' },
 };
 
 const ClaimsList: React.FC<ClaimsListProps> = ({
@@ -39,20 +39,20 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
 
   return (
     <div style={{
-      width: '270px', flexShrink: 0, borderRight: '1px solid #1a1a1a',
+      width: '320px', flexShrink: 0, borderRight: '1px solid var(--syn-border)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Header */}
       <div style={{
-        padding: '10px 12px', borderBottom: '1px solid #1a1a1a',
+        padding: '10px 12px', borderBottom: '1px solid var(--syn-border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{ fontSize: '11px', fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--syn-text-tertiary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Claims {claims.length > 0 && `(${claims.length})`}
         </div>
         {claims.length > 0 && hasPending && (
           <button className="syn-btn" onClick={onVerifyAll}
-            style={{ padding: '3px 10px', borderRadius: '5px', borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff', fontWeight: 700 }}>
+            style={{ padding: '3px 10px', borderRadius: '5px', borderColor: 'var(--syn-text-heading)', backgroundColor: 'var(--syn-bg-hover)', color: 'var(--syn-text-heading)', fontWeight: 700 }}>
             Verify All
           </button>
         )}
@@ -68,13 +68,13 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
       {doneClaims > 0 && !claims.some(c => c.status === 'verifying') && (
         <div style={{
           margin: '6px', padding: '10px 12px', borderRadius: '8px',
-          border: '1px solid #1a1a1a', backgroundColor: '#0a0a0a',
+          border: '1px solid var(--syn-border)', backgroundColor: 'var(--syn-bg-raised)',
         }} className="syn-fade">
-          <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--syn-text-heading)', marginBottom: '6px' }}>
             {doneClaims} claim{doneClaims !== 1 ? 's' : ''} verified
           </div>
           {/* Stacked bar */}
-          <div style={{ display: 'flex', height: '4px', borderRadius: '2px', overflow: 'hidden', backgroundColor: '#1a1a1a', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', height: '4px', borderRadius: '2px', overflow: 'hidden', backgroundColor: 'var(--syn-border)', marginBottom: '8px' }}>
             {Object.entries(verdictCounts).map(([v, count]) => {
               const vc = VERDICT_COLORS[v] || VERDICT_COLORS.unsupported;
               return <div key={v} style={{ flex: count, backgroundColor: vc.text, transition: 'flex 0.5s' }} />;
@@ -87,13 +87,13 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
                 <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: vc.text }} />
                   <span style={{ color: vc.text, fontWeight: 600 }}>{count}</span>
-                  <span style={{ color: '#555' }}>{v.replace('_', ' ')}</span>
+                  <span style={{ color: 'var(--syn-text-muted)' }}>{v.replace('_', ' ')}</span>
                 </div>
               );
             })}
           </div>
           {pipelineStats.sources > 0 && (
-            <div className="syn-mono" style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #1a1a1a', display: 'flex', gap: '8px', fontSize: '9px', color: '#444' }}>
+            <div className="syn-mono" style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--syn-border)', display: 'flex', gap: '8px', fontSize: '9px', color: 'var(--syn-text-dim)' }}>
               <span>{pipelineStats.sources} sources</span>
               {pipelineStats.durationMs > 0 && <span>{(pipelineStats.durationMs / 1000).toFixed(1)}s</span>}
             </div>
@@ -106,7 +106,7 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
         {isExtracting && (
           <div style={{ padding: '32px', textAlign: 'center' }} className="syn-fade">
             <div className="syn-spinner" style={{ margin: '0 auto 10px' }} />
-            <div style={{ fontSize: '11px', color: '#555' }}>Extracting claims...</div>
+            <div style={{ fontSize: '11px', color: 'var(--syn-text-muted)' }}>Extracting claims...</div>
           </div>
         )}
 
@@ -134,9 +134,9 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
                 }
               }}
               style={{
-                borderLeft: `3px solid ${vc?.text || (claim.status === 'verifying' ? '#fff' : '#1a1a1a')}`,
+                borderLeft: `3px solid ${vc?.text || (claim.status === 'verifying' ? '#fff' : 'var(--syn-border)')}`,
                 borderColor: isSelected ? (vc?.border || '#333') : undefined,
-                backgroundColor: isSelected ? (vc?.bg || '#111') : vc ? `${vc.bg}` : undefined,
+                backgroundColor: isSelected ? (vc?.bg || 'var(--syn-bg-hover)') : vc ? `${vc.bg}` : undefined,
                 boxShadow: isSelected ? `0 0 16px ${vc?.glow || 'rgba(0,0,0,0.3)'}` : 'none',
                 animation: `syn-slide-in 0.3s ease ${i * 0.05}s both`,
               }}
@@ -158,19 +158,19 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.45 }}>
+              <div style={{ fontSize: '12px', color: 'var(--syn-text-secondary)', lineHeight: 1.45 }}>
                 {claim.original.length > 120 ? claim.original.slice(0, 120) + '...' : claim.original}
               </div>
               {claim.location_str && (
-                <div className="syn-mono" style={{ fontSize: '9px', color: '#555', marginTop: '4px' }}>
+                <div className="syn-mono" style={{ fontSize: '9px', color: 'var(--syn-text-muted)', marginTop: '4px' }}>
                   {claim.location_str}
                 </div>
               )}
               {claim.status === 'pending' && (
-                <div style={{ fontSize: '9px', color: '#555', marginTop: '4px' }}>Click to verify</div>
+                <div style={{ fontSize: '9px', color: 'var(--syn-text-muted)', marginTop: '4px' }}>Click to verify</div>
               )}
               {claim.status === 'error' && (
-                <div style={{ fontSize: '9px', color: '#f87171', marginTop: '4px' }}>
+                <div style={{ fontSize: '9px', color: '#c47070', marginTop: '4px' }}>
                   Verification failed — click to retry
                 </div>
               )}
