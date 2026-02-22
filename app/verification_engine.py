@@ -3127,13 +3127,19 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         try:
             cik = _resolve_ticker_to_cik(detected_ticker)
             if cik:
-                resp = httpx.get(
-                    f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
-                    headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
-                    timeout=15,
-                )
-                if resp.status_code == 200:
-                    company_data = resp.json()
+                # Reuse cached XBRL data from evidence retrieval (avoids duplicate HTTP call)
+                cache_key = f"xbrl:{cik}"
+                company_data = _xbrl_cache.get(cache_key)
+                if company_data is None:
+                    resp = httpx.get(
+                        f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+                        headers={"User-Agent": "Synapse/1.0 (verification@synapse.ai)"},
+                        timeout=15,
+                    )
+                    if resp.status_code == 200:
+                        company_data = resp.json()
+                        _xbrl_cache.set(cache_key, company_data)
+                if company_data:
                     entity_name = company_data.get("entityName", "")
                     us_gaap = company_data.get("facts", {}).get("us-gaap", {})
 
@@ -3224,9 +3230,52 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     metrics.end_stage("evaluation")
     yield VerificationEvent("step_complete", {"step": "evaluation", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 6: Contradiction Detection ---
-    yield VerificationEvent("step_start", {"step": "contradictions", "label": "Detecting cross-source contradictions..."})
-    contradictions = detect_contradictions(claim_text, all_evidence)
+    # --- Stages 6-8: Contradiction + Consistency + Plausibility (PARALLELIZED) ---
+    # These three analysis stages share the same inputs (claim_text, all_evidence)
+    # and have no data dependencies on each other, so we run them concurrently.
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    yield VerificationEvent("step_start", {"step": "contradictions", "label": "Analyzing contradictions, consistency & plausibility..."})
+
+    _contradictions_result = [None]
+    _consistency_result = [None]
+    _plausibility_result = [None]
+    _staleness_result = [None]
+    _citation_result = [None]
+
+    def _run_contradictions():
+        _contradictions_result[0] = detect_contradictions(claim_text, all_evidence)
+
+    def _run_consistency():
+        _consistency_result[0] = check_cross_document_consistency(claim_text, all_evidence, company_ticker=detected_ticker)
+
+    def _run_plausibility():
+        _plausibility_result[0] = assess_forward_looking_plausibility(claim_text, all_evidence, company_ticker=detected_ticker)
+
+    def _run_staleness():
+        _staleness_result[0] = detect_source_staleness(all_evidence, company_ticker=detected_ticker)
+
+    def _run_citations():
+        _citation_result[0] = verify_citations(claim_text, all_evidence, company_ticker=detected_ticker)
+
+    with _TPE(max_workers=5) as analysis_pool:
+        futs = [
+            analysis_pool.submit(_run_contradictions),
+            analysis_pool.submit(_run_consistency),
+            analysis_pool.submit(_run_plausibility),
+            analysis_pool.submit(_run_staleness),
+            analysis_pool.submit(_run_citations),
+        ]
+        for f in futs:
+            f.result()
+
+    contradictions = _contradictions_result[0] or []
+    consistency_issues = _consistency_result[0] or []
+    plausibility = _plausibility_result[0]
+    staleness_findings = _staleness_result[0] or []
+    citation_results = _citation_result[0] or []
+
+    # Emit contradiction events
     for c in contradictions:
         yield VerificationEvent("contradiction_detected", c)
     if contradictions:
@@ -3241,9 +3290,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     yield VerificationEvent("contradictions_complete", {"count": len(contradictions), "duration_ms": int((time.time() - t0) * 1000)})
     yield VerificationEvent("step_complete", {"step": "contradictions", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 7: Consistency Analysis (with temporal restatement detection) ---
-    yield VerificationEvent("step_start", {"step": "consistency", "label": "Analyzing cross-document consistency..."})
-    consistency_issues = check_cross_document_consistency(claim_text, all_evidence, company_ticker=detected_ticker)
+    # Emit consistency events
+    yield VerificationEvent("step_start", {"step": "consistency", "label": "Cross-document consistency..."})
     for ci in consistency_issues:
         yield VerificationEvent("consistency_issue", ci)
     if consistency_issues:
@@ -3253,9 +3301,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         yield VerificationEvent("agent_reasoning", {"agent": "consistency_analyzer", "stage": "consistency", "message": "Cross-document consistency check passed", "detail": "No narrative drift, metric inconsistency, or temporal restatement patterns detected."})
     yield VerificationEvent("step_complete", {"step": "consistency", "count": len(consistency_issues), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 7b: Source Staleness Detection ---
-    yield VerificationEvent("step_start", {"step": "staleness", "label": "Checking source freshness..."})
-    staleness_findings = detect_source_staleness(all_evidence, company_ticker=detected_ticker)
+    # Emit staleness events
+    yield VerificationEvent("step_start", {"step": "staleness", "label": "Source freshness..."})
     for sf in staleness_findings:
         yield VerificationEvent("staleness_finding", sf)
     if staleness_findings:
@@ -3276,9 +3323,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         })
     yield VerificationEvent("step_complete", {"step": "staleness", "count": len(staleness_findings), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 7c: Citation Verification ---
-    yield VerificationEvent("step_start", {"step": "citation_verification", "label": "Verifying cited sources..."})
-    citation_results = verify_citations(claim_text, all_evidence, company_ticker=detected_ticker)
+    # Emit citation events
+    yield VerificationEvent("step_start", {"step": "citation_verification", "label": "Citation verification..."})
     for cr in citation_results:
         yield VerificationEvent("citation_verified", cr)
     if citation_results:
@@ -3309,9 +3355,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
         })
     yield VerificationEvent("step_complete", {"step": "citation_verification", "count": len(citation_results), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 8: Plausibility Assessment (with peer benchmarking) ---
-    yield VerificationEvent("step_start", {"step": "plausibility", "label": "Assessing plausibility & peer benchmarks..."})
-    plausibility = assess_forward_looking_plausibility(claim_text, all_evidence, company_ticker=detected_ticker)
+    # Emit plausibility events
+    yield VerificationEvent("step_start", {"step": "plausibility", "label": "Plausibility assessment..."})
     if plausibility:
         yield VerificationEvent("plausibility_assessment", plausibility)
         plaus_level = plausibility.get("plausibility_level", "?")
@@ -3324,13 +3369,16 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     # --- Stage 9: Verdict Synthesis (with materiality) ---
     yield VerificationEvent("step_start", {"step": "synthesis", "label": "Synthesizing verdicts..."})
 
-    subclaim_verdicts = []
-    for sc in subclaims:
+    # Parallelize per-subclaim verdict synthesis (each is an independent LLM call)
+    def _synthesize_one(sc):
         sc_evidence = [e for e in all_evidence if e.get("subclaim_id") == sc["id"]]
         verdict = synthesize_verdict(sc["text"], sc_evidence)
         verdict["text"] = sc["text"]
         verdict["subclaim_id"] = sc["id"]
-        subclaim_verdicts.append(verdict)
+        return verdict
+
+    with _TPE(max_workers=min(4, len(subclaims) or 1)) as verdict_pool:
+        subclaim_verdicts = list(verdict_pool.map(_synthesize_one, subclaims))
         yield VerificationEvent("subclaim_verdict", {
             "subclaim_id": sc["id"],
             "text": sc["text"],
@@ -3368,16 +3416,54 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
 
     yield VerificationEvent("step_complete", {"step": "synthesis", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 10: Provenance Tracing (with source authority hierarchy) ---
-    yield VerificationEvent("step_start", {"step": "provenance", "label": "Tracing claim origins & source authority..."})
-    provenance = trace_provenance(claim_text, all_evidence)
+    # --- Stages 10-11: Provenance + Correction + Risk Signals (PARALLELIZED) ---
+    # These three stages are independent: provenance needs (claim, evidence),
+    # correction needs (claim, overall, evidence), risk needs (claim, overall, etc.)
+    yield VerificationEvent("step_start", {"step": "provenance", "label": "Tracing origins, generating correction & risk signals..."})
+
+    _provenance_result = [None]
+    _corrected_result = [None]
+    _risk_result = [None]
+
+    def _run_provenance():
+        _provenance_result[0] = trace_provenance(claim_text, all_evidence)
+
+    def _run_correction():
+        _corrected_result[0] = generate_corrected_claim(claim_text, overall, all_evidence)
+
+    def _run_risk():
+        _risk_result[0] = extract_risk_signals(
+            claim_text=claim_text,
+            overall_verdict=overall,
+            subclaim_verdicts=subclaim_verdicts,
+            contradictions=contradictions,
+            consistency_issues=consistency_issues,
+            materiality=materiality,
+            authority_conflicts=compute_source_authority_conflicts(all_evidence),
+            plausibility=plausibility,
+            normalization=normalization,
+        )
+
+    with _TPE(max_workers=3) as late_pool:
+        futs = [
+            late_pool.submit(_run_provenance),
+            late_pool.submit(_run_correction),
+            late_pool.submit(_run_risk),
+        ]
+        for f in futs:
+            f.result()
+
+    provenance = _provenance_result[0] or {"nodes": [], "edges": [], "analysis": ""}
+    corrected = _corrected_result[0] or {}
+    risk_signals = _risk_result[0] or {}
+
+    # Emit provenance events
     for node in provenance.get("nodes", []):
         yield VerificationEvent("provenance_node", node)
     for edge in provenance.get("edges", []):
         yield VerificationEvent("provenance_edge", edge)
     yield VerificationEvent("provenance_complete", {"analysis": provenance.get("analysis", ""), "duration_ms": int((time.time() - t0) * 1000)})
 
-    # Source authority conflict detection
     authority_conflicts = compute_source_authority_conflicts(all_evidence)
     for ac in authority_conflicts:
         yield VerificationEvent("authority_conflict", ac)
@@ -3389,9 +3475,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
 
     yield VerificationEvent("step_complete", {"step": "provenance", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 11: Corrected Claim ---
-    yield VerificationEvent("step_start", {"step": "correction", "label": "Generating corrected claim..."})
-    corrected = generate_corrected_claim(claim_text, overall, all_evidence)
+    # Emit correction events
+    yield VerificationEvent("step_start", {"step": "correction", "label": "Corrected claim..."})
     yield VerificationEvent("corrected_claim", {
         "original": claim_text,
         "corrected": corrected.get("corrected", ""),
@@ -3428,19 +3513,8 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
 
     yield VerificationEvent("step_complete", {"step": "correction", "duration_ms": int((time.time() - t0) * 1000)})
 
-    # --- Stage 12: Risk Signal Extraction ---
-    yield VerificationEvent("step_start", {"step": "risk_signals", "label": "Extracting risk signals..."})
-    risk_signals = extract_risk_signals(
-        claim_text=claim_text,
-        overall_verdict=overall,
-        subclaim_verdicts=subclaim_verdicts,
-        contradictions=contradictions,
-        consistency_issues=consistency_issues,
-        materiality=materiality,
-        authority_conflicts=authority_conflicts,
-        plausibility=plausibility,
-        normalization=normalization,
-    )
+    # Emit risk signal events (already computed in parallel above)
+    yield VerificationEvent("step_start", {"step": "risk_signals", "label": "Risk signals..."})
     yield VerificationEvent("risk_signals", risk_signals)
     risk_level = risk_signals.get("risk_level", "?")
     red_count = len(risk_signals.get("red_flags", []))

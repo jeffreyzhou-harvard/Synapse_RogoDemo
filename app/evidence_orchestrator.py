@@ -3,12 +3,16 @@ B2: Evidence Orchestrator — batching, dedup, shared caching across subclaims.
 
 Replaces per-subclaim retrieve_evidence() with a single orchestrated pass
 that reuses API results, caches aggressively, and deduplicates evidence items.
+
+Uses ThreadPoolExecutor to parallelize independent API calls across subclaims.
 """
 
 from __future__ import annotations
 import re
 import hashlib
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from collections import defaultdict
@@ -194,161 +198,155 @@ class EvidenceOrchestrator:
     ) -> Dict[str, Any]:
         """Gather evidence for all subclaims with shared caching and dedup.
 
-        Parameters
-        ----------
-        ticker : detected company ticker (may be "")
-        subclaims : list of {"id": str, "text": str, "type": str}
-        claim_context : full original claim text
-        on_evidence : optional callback(subclaim_id, evidence_item) for SSE streaming
-
-        Returns
-        -------
-        {
-            "per_subclaim": {subclaim_id: [evidence_dict, ...]},
-            "all_evidence": [evidence_dict, ...],
-            "stats": {...},
-        }
+        Uses ThreadPoolExecutor to parallelize independent API calls.
         """
         per_subclaim: Dict[str, List[Dict]] = defaultdict(list)
         seen_hashes: set = set()
         all_evidence: List[Dict] = []
         eid_counter = [0]
+        _lock = threading.Lock()
 
         def _next_eid():
-            eid_counter[0] += 1
-            return f"ev-{eid_counter[0]}"
+            with _lock:
+                eid_counter[0] += 1
+                return f"ev-{eid_counter[0]}"
 
         def _add(sc_id: str, ev: Dict):
             ch = ev.get("_content_hash", _content_hash(ev.get("snippet", "")))
-            if ch in seen_hashes:
-                return
-            seen_hashes.add(ch)
-            ev["subclaim_id"] = sc_id
-            per_subclaim[sc_id].append(ev)
-            all_evidence.append(ev)
+            with _lock:
+                if ch in seen_hashes:
+                    return
+                seen_hashes.add(ch)
+                ev["subclaim_id"] = sc_id
+                per_subclaim[sc_id].append(ev)
+                all_evidence.append(ev)
             if on_evidence:
                 on_evidence(sc_id, ev)
 
         # --- XBRL: one fetch per ticker (shared across subclaims) ---
-        xbrl_fetched = False
         if ticker:
             for sc in subclaims:
                 sc_class = classify_subclaim(sc["text"])
                 if sc_class in ("filed_metric", "guidance"):
                     self._m.inc_sec()
                     xbrl_result = self._lookup_xbrl(ticker, sc["text"])
-                    xbrl_fetched = True
                     if xbrl_result and xbrl_result.get("match") != "unverifiable":
                         ev = self._xbrl_to_evidence(_next_eid(), xbrl_result, ticker)
                         _add(sc["id"], ev)
 
-        # --- Per-subclaim retrieval (tier-aware) ---
-        for sc in subclaims:
+        # --- Per-subclaim retrieval (parallelized across sources) ---
+        def _retrieve_for_subclaim(sc: Dict):
+            """Retrieve all evidence for a single subclaim — runs in thread."""
             sc_text = sc["text"]
             sc_id = sc["id"]
             sc_class = classify_subclaim(sc_text)
             sc_stakes = is_high_stakes(sc_text)
+            local_results: List[Tuple[str, Dict]] = []
 
-            # EDGAR (skip for macro/market subclaims)
-            if sc_class in ("filed_metric", "guidance") and ticker:
-                edgar_results = self._cached_edgar(sc_text, company=ticker)
-                for r in edgar_results:
-                    ev = {
-                        "id": _next_eid(),
-                        "title": f"{r.get('filing_type', 'SEC Filing')} — {r.get('company', 'Unknown')}",
-                        "snippet": r.get("snippet", "")[:400],
-                        "source": r.get("url", "SEC EDGAR"),
-                        "tier": "sec_filing",
-                        "filing_type": r.get("filing_type", ""),
-                        "accession_number": r.get("accession_number", ""),
-                        "filing_date": r.get("filing_date", ""),
-                        "company_ticker": r.get("company", ""),
-                        "_content_hash": _content_hash(r.get("snippet", "")),
-                    }
-                    _add(sc_id, ev)
+            def _fetch_edgar():
+                if sc_class in ("filed_metric", "guidance") and ticker:
+                    for r in self._cached_edgar(sc_text, company=ticker):
+                        local_results.append((sc_id, {
+                            "id": _next_eid(),
+                            "title": f"{r.get('filing_type', 'SEC Filing')} — {r.get('company', 'Unknown')}",
+                            "snippet": r.get("snippet", "")[:400],
+                            "source": r.get("url", "SEC EDGAR"),
+                            "tier": "sec_filing",
+                            "filing_type": r.get("filing_type", ""),
+                            "accession_number": r.get("accession_number", ""),
+                            "filing_date": r.get("filing_date", ""),
+                            "company_ticker": r.get("company", ""),
+                            "_content_hash": _content_hash(r.get("snippet", "")),
+                        }))
 
-            # Earnings transcripts (skip for macro subclaims)
-            if sc_class != "macro":
-                query = f"earnings call transcript {ticker} {sc_text}. Include exact quotes from management with speaker name, quarter, and year."
-                focus = "earnings call transcripts, quarterly earnings, management commentary, guidance, analyst Q&A"
-                earnings = self._cached_perplexity(query, focus)
-                if earnings.get("text"):
-                    ev = {
-                        "id": _next_eid(),
-                        "title": "Earnings Call Transcript",
-                        "snippet": earnings["text"][:500],
-                        "source": "Perplexity Sonar (Earnings)",
-                        "tier": "earnings_transcript",
-                        "citations_urls": earnings.get("citations", []),
-                        "_content_hash": _content_hash(earnings["text"]),
-                    }
-                    _add(sc_id, ev)
+            def _fetch_earnings():
+                if sc_class != "macro":
+                    query = f"earnings call transcript {ticker} {sc_text}. Include exact quotes from management with speaker name, quarter, and year."
+                    focus = "earnings call transcripts, quarterly earnings, management commentary, guidance, analyst Q&A"
+                    earnings = self._cached_perplexity(query, focus)
+                    if earnings.get("text"):
+                        local_results.append((sc_id, {
+                            "id": _next_eid(),
+                            "title": "Earnings Call Transcript",
+                            "snippet": earnings["text"][:500],
+                            "source": "Perplexity Sonar (Earnings)",
+                            "tier": "earnings_transcript",
+                            "citations_urls": earnings.get("citations", []),
+                            "_content_hash": _content_hash(earnings["text"]),
+                        }))
 
-            # Financial news
-            if sc_class != "macro":
-                query = f"financial news press release {ticker} {sc_text}"
-                focus = "financial news, press releases, deal announcements, market data, analyst reports"
-                news = self._cached_perplexity(query, focus)
-                if news.get("text"):
-                    ev = {
-                        "id": _next_eid(),
-                        "title": "Financial News / Press Release",
-                        "snippet": news["text"][:500],
-                        "source": "Perplexity Sonar (Financial News)",
-                        "tier": "press_release",
-                        "citations_urls": news.get("citations", []),
-                        "_content_hash": _content_hash(news["text"]),
-                    }
-                    _add(sc_id, ev)
+            def _fetch_news():
+                if sc_class != "macro":
+                    query = f"financial news press release {ticker} {sc_text}"
+                    focus = "financial news, press releases, deal announcements, market data, analyst reports"
+                    news = self._cached_perplexity(query, focus)
+                    if news.get("text"):
+                        local_results.append((sc_id, {
+                            "id": _next_eid(),
+                            "title": "Financial News / Press Release",
+                            "snippet": news["text"][:500],
+                            "source": "Perplexity Sonar (Financial News)",
+                            "tier": "press_release",
+                            "citations_urls": news.get("citations", []),
+                            "_content_hash": _content_hash(news["text"]),
+                        }))
 
-            # FRED (only for macro subclaims)
-            if sc_class == "macro":
-                fred_result = self._cached_fred(sc_text)
-                if fred_result:
-                    snippet_parts = [
-                        f"Series: {fred_result.get('series_id', '')}",
-                        f"Latest: {fred_result['latest_value']} ({fred_result['latest_date']})",
-                    ]
-                    if fred_result.get("yoy_change_pct") is not None:
-                        snippet_parts.append(f"YoY Change: {fred_result['yoy_change_pct']}%")
-                    ev = {
-                        "id": _next_eid(),
-                        "title": f"FRED Macro Data — {fred_result.get('series_id', '')}",
-                        "snippet": " | ".join(snippet_parts),
-                        "source": fred_result.get("data_source", "FRED"),
-                        "tier": "market_data",
-                        "filing_date": fred_result.get("latest_date", ""),
-                        "fred_data": fred_result,
-                        "_content_hash": _content_hash(" ".join(snippet_parts)),
-                    }
-                    _add(sc_id, ev)
+            def _fetch_fred():
+                if sc_class == "macro":
+                    fred_result = self._cached_fred(sc_text)
+                    if fred_result:
+                        snippet_parts = [
+                            f"Series: {fred_result.get('series_id', '')}",
+                            f"Latest: {fred_result['latest_value']} ({fred_result['latest_date']})",
+                        ]
+                        if fred_result.get("yoy_change_pct") is not None:
+                            snippet_parts.append(f"YoY Change: {fred_result['yoy_change_pct']}%")
+                        local_results.append((sc_id, {
+                            "id": _next_eid(),
+                            "title": f"FRED Macro Data — {fred_result.get('series_id', '')}",
+                            "snippet": " | ".join(snippet_parts),
+                            "source": fred_result.get("data_source", "FRED"),
+                            "tier": "market_data",
+                            "filing_date": fred_result.get("latest_date", ""),
+                            "fred_data": fred_result,
+                            "_content_hash": _content_hash(" ".join(snippet_parts)),
+                        }))
 
-            # Yahoo Finance (for market subclaims, or if ticker present)
-            if ticker and sc_class in ("market", "filed_metric"):
-                market_result = self._cached_market(ticker, sc_text)
-                if market_result and market_result.get("current_price"):
-                    mkt_parts = [
-                        f"Price: ${market_result['current_price']:.2f}",
-                        f"Exchange: {market_result.get('exchange', '')}",
-                    ]
-                    if market_result.get("yoy_return_pct") is not None:
-                        mkt_parts.append(f"1Y Return: {market_result['yoy_return_pct']}%")
-                    if market_result.get("high_52w") and market_result.get("low_52w"):
-                        mkt_parts.append(f"52W Range: ${market_result['low_52w']} - ${market_result['high_52w']}")
-                    ev = {
-                        "id": _next_eid(),
-                        "title": f"Market Data — {ticker}",
-                        "snippet": " | ".join(mkt_parts),
-                        "source": market_result.get("data_source", "Yahoo Finance"),
-                        "tier": "market_data",
-                        "company_ticker": ticker,
-                        "market_data": market_result,
-                        "_content_hash": _content_hash(" ".join(mkt_parts)),
-                    }
-                    _add(sc_id, ev)
+            def _fetch_market():
+                if ticker and sc_class in ("market", "filed_metric"):
+                    market_result = self._cached_market(ticker, sc_text)
+                    if market_result and market_result.get("current_price"):
+                        mkt_parts = [
+                            f"Price: ${market_result['current_price']:.2f}",
+                            f"Exchange: {market_result.get('exchange', '')}",
+                        ]
+                        if market_result.get("yoy_return_pct") is not None:
+                            mkt_parts.append(f"1Y Return: {market_result['yoy_return_pct']}%")
+                        if market_result.get("high_52w") and market_result.get("low_52w"):
+                            mkt_parts.append(f"52W Range: ${market_result['low_52w']} - ${market_result['high_52w']}")
+                        local_results.append((sc_id, {
+                            "id": _next_eid(),
+                            "title": f"Market Data — {ticker}",
+                            "snippet": " | ".join(mkt_parts),
+                            "source": market_result.get("data_source", "Yahoo Finance"),
+                            "tier": "market_data",
+                            "company_ticker": ticker,
+                            "market_data": market_result,
+                            "_content_hash": _content_hash(" ".join(mkt_parts)),
+                        }))
 
-            # Counter-evidence (conditional)
-            supporting_count = len(per_subclaim.get(sc_id, []))
+            # Run all source fetches in parallel within this subclaim
+            source_fns = [_fetch_edgar, _fetch_earnings, _fetch_news, _fetch_fred, _fetch_market]
+            with ThreadPoolExecutor(max_workers=5) as inner_pool:
+                list(inner_pool.map(lambda fn: fn(), source_fns))
+
+            # Add results (thread-safe via _add)
+            for sid, ev in local_results:
+                _add(sid, ev)
+
+            # Counter-evidence (runs after supporting evidence so we can count)
+            with _lock:
+                supporting_count = len(per_subclaim.get(sc_id, []))
             run_counter = sc_stakes or supporting_count >= 2
             if run_counter:
                 query = (
@@ -358,7 +356,7 @@ class EvidenceOrchestrator:
                 focus = "counter-evidence, financial restatements, corrections, contradictions"
                 counter = self._cached_perplexity(query, focus)
                 if counter.get("text"):
-                    ev = {
+                    _add(sc_id, {
                         "id": _next_eid(),
                         "title": "Counter-Evidence Search",
                         "snippet": counter["text"][:500],
@@ -366,8 +364,11 @@ class EvidenceOrchestrator:
                         "tier": "counter",
                         "citations_urls": counter.get("citations", []),
                         "_content_hash": _content_hash(counter["text"]),
-                    }
-                    _add(sc_id, ev)
+                    })
+
+        # Run subclaim retrieval in parallel (capped at 4 threads)
+        with ThreadPoolExecutor(max_workers=min(4, len(subclaims) or 1)) as pool:
+            list(pool.map(_retrieve_for_subclaim, subclaims))
 
         self._m.evidence_pre_dedupe = eid_counter[0]
         self._m.evidence_post_dedupe = len(all_evidence)

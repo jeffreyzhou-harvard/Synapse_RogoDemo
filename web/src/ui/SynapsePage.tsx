@@ -353,7 +353,14 @@ const SynapsePage: React.FC = () => {
   // ─── Verify All ─────────────────────────────────────────────────────
 
   const verifyAll = useCallback(async () => {
-    await Promise.all(claims.filter(c => c.status === 'pending').map(c => verifyClaim(c.id)));
+    const pending = claims.filter(c => c.status === 'pending');
+    const MAX_CONCURRENT = 3;
+
+    // Process in batches to avoid overwhelming the backend and hitting rate limits
+    for (let i = 0; i < pending.length; i += MAX_CONCURRENT) {
+      const batch = pending.slice(i, i + MAX_CONCURRENT);
+      await Promise.all(batch.map(c => verifyClaim(c.id)));
+    }
   }, [claims, verifyClaim]);
 
   // ─── File Uploads ───────────────────────────────────────────────────
