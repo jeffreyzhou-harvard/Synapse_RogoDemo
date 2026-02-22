@@ -489,3 +489,72 @@ def api_financial_claims_feed():
 def api_trending_tweets():
     """Redirect to financial claims feed."""
     return api_financial_claims_feed()
+
+
+# ---------------------------------------------------------------------------
+# Market Overview — live index data from Yahoo Finance
+# ---------------------------------------------------------------------------
+
+import httpx as _httpx
+import time as _time
+
+_market_cache: Dict[str, Any] = {"data": None, "ts": 0}
+_MARKET_TTL = 60  # refresh at most once per minute
+
+@router.get("/market-overview")
+def api_market_overview():
+    """Return current prices for major indices via Yahoo Finance."""
+    now = _time.time()
+    if _market_cache["data"] and now - _market_cache["ts"] < _MARKET_TTL:
+        return _market_cache["data"]
+
+    symbols = {
+        "^GSPC":  {"name": "S&P 500",       "short": "S&P 500"},
+        "^IXIC":  {"name": "NASDAQ Comp.",   "short": "NASDAQ"},
+        "^DJI":   {"name": "Dow Jones",      "short": "Dow"},
+        "^VIX":   {"name": "CBOE VIX",       "short": "VIX"},
+        "^RUT":   {"name": "Russell 2000",   "short": "Russell"},
+    }
+    indices = []
+    for sym, meta in symbols.items():
+        try:
+            resp = _httpx.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}",
+                params={"interval": "5m", "range": "1d"},
+                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+                timeout=8,
+            )
+            if resp.status_code != 200:
+                continue
+            chart = resp.json().get("chart", {}).get("result", [])
+            if not chart:
+                continue
+            r = chart[0]
+            m = r.get("meta", {})
+            closes = r.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+            closes = [c for c in closes if c is not None]
+            price = m.get("regularMarketPrice")
+            prev = m.get("chartPreviousClose") or m.get("previousClose")
+            change = round(price - prev, 2) if price and prev else None
+            change_pct = round((change / prev) * 100, 2) if change is not None and prev else None
+            # downsample sparkline to ~24 points
+            spark = []
+            if len(closes) > 2:
+                step = max(1, len(closes) // 24)
+                spark = [round(c, 2) for c in closes[::step]]
+            indices.append({
+                "symbol": sym,
+                "name": meta["name"],
+                "short": meta["short"],
+                "price": round(price, 2) if price else None,
+                "change": change,
+                "change_pct": change_pct,
+                "sparkline": spark,
+            })
+        except Exception:
+            continue
+
+    result = {"indices": indices, "ts": now}
+    _market_cache["data"] = result
+    _market_cache["ts"] = now
+    return result

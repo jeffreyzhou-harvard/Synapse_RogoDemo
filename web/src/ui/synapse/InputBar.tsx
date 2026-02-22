@@ -1,5 +1,31 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { API_BASE, PRELOADED_EXAMPLES } from './constants';
+
+interface IndexData {
+  symbol: string;
+  name: string;
+  short: string;
+  price: number | null;
+  change: number | null;
+  change_pct: number | null;
+  sparkline: number[];
+}
+
+const Sparkline: React.FC<{ data: number[]; positive: boolean }> = ({ data, positive }) => {
+  if (data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const h = 28;
+  const w = 80;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * (h - 4) - 2}`).join(' ');
+  const color = positive ? '#6fad8e' : '#c47070';
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ flexShrink: 0 }}>
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
 
 interface PipelineStats {
   steps: number;
@@ -41,6 +67,14 @@ const InputBar: React.FC<InputBarProps> = ({
   reportId, onShareTwitter, onViewReport, financialClaims,
 }) => {
   const docInputRef = useRef<HTMLInputElement>(null);
+  const [marketData, setMarketData] = useState<IndexData[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/market-overview`)
+      .then(r => r.json())
+      .then(d => { if (d.indices?.length) setMarketData(d.indices); })
+      .catch(() => {});
+  }, []);
 
   if (inputCollapsed) {
     return (
@@ -49,7 +83,7 @@ const InputBar: React.FC<InputBarProps> = ({
           padding: '4px 16px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
           display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#0a0a0a',
         }}>
-          <span style={{ fontSize: '11px', color: '#555' }}>Analyzing:</span>
+          <span style={{ fontSize: '11px', color: 'var(--syn-text-muted)' }}>Analyzing:</span>
           <span style={{ fontSize: '11px', color: '#999', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {ingestedTitle || inputRef.slice(0, 80)}
           </span>
@@ -62,9 +96,9 @@ const InputBar: React.FC<InputBarProps> = ({
         {doneClaims > 0 && (
           <div style={{
             padding: '4px 16px', borderBottom: '1px solid #1a1a1a', flexShrink: 0,
-            display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#050505',
+            display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--syn-bg-sunken)',
           }} className="syn-fade">
-            <span className="syn-mono" style={{ fontSize: '10px', color: '#555', fontWeight: 600 }}>
+            <span className="syn-mono" style={{ fontSize: '10px', color: 'var(--syn-text-muted)', fontWeight: 600 }}>
               {doneClaims} claims · {pipelineStats.apiCalls} API calls · {pipelineStats.services.size} services
               {pipelineStats.durationMs > 0 && ` · ${(pipelineStats.durationMs / 1000).toFixed(0)}s`}
             </span>
@@ -112,25 +146,70 @@ const InputBar: React.FC<InputBarProps> = ({
                 Independent verification for every<br />
                 claim in financial AI output
               </h1>
-              <p style={{ fontSize: '13px', color: '#555', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7, fontWeight: 400 }}>
+              <p style={{ fontSize: '13px', color: 'var(--syn-text-muted)', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7, fontWeight: 400 }}>
                 12-stage pipeline. Entity resolution. Financial normalization.
                 Peer benchmarking. Materiality scoring. Risk signal extraction.
               </p>
             </div>
 
+            {/* Market Overview */}
+            {marketData.length > 0 && (
+              <div style={{
+                maxWidth: '760px', margin: '0 auto 24px',
+                display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap',
+              }} className="syn-fade">
+                <div className="syn-section-header" style={{
+                  width: '100%', textAlign: 'center', marginBottom: '4px', letterSpacing: '1.5px',
+                }}>Index Movement</div>
+                {marketData.map(idx => {
+                  const positive = (idx.change_pct ?? 0) >= 0;
+                  return (
+                    <div key={idx.symbol} style={{
+                      flex: '1 1 140px', maxWidth: '180px',
+                      padding: '10px 12px', borderRadius: '8px',
+                      border: '1px solid var(--syn-border)',
+                      backgroundColor: 'var(--syn-bg-raised)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--syn-text-secondary)' }}>{idx.short}</span>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px',
+                          color: positive ? '#6fad8e' : '#c47070',
+                        }}>
+                          <span style={{ fontSize: '8px' }}>{positive ? '↗' : '↘'}</span>
+                          {Math.abs(idx.change_pct ?? 0).toFixed(2)}%
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '6px' }}>
+                        <div>
+                          <div className="syn-mono" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--syn-text-heading)', lineHeight: 1.2 }}>
+                            {idx.price != null ? idx.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                          </div>
+                          <div className="syn-mono" style={{ fontSize: '9px', color: positive ? '#6fad8e' : '#c47070', marginTop: '2px' }}>
+                            {positive ? '+' : ''}{idx.change != null ? idx.change.toFixed(2) : '—'}
+                          </div>
+                        </div>
+                        <Sparkline data={idx.sparkline} positive={positive} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Pipeline strip */}
             <div className="syn-mono" style={{
               maxWidth: '700px', margin: '0 auto 28px', padding: '16px 20px',
-              border: '1px solid #141414', borderRadius: '2px', backgroundColor: '#050505',
+              border: '1px solid var(--syn-border-subtle)', borderRadius: '2px', backgroundColor: 'var(--syn-bg-sunken)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 0' }}>
                 {['ingest', 'extract', 'resolve', 'normalize', 'retrieve', 'evaluate',
                   'contradict', 'consistency', 'plausibility', 'synthesize', 'trace', 'risk',
                 ].map((step, i, arr) => (
                   <React.Fragment key={step}>
-                    <div style={{ fontSize: '8px', fontWeight: 600, color: '#555', letterSpacing: '0.3px' }}>{step}</div>
+                    <div style={{ fontSize: '8px', fontWeight: 600, color: 'var(--syn-text-muted)', letterSpacing: '0.3px' }}>{step}</div>
                     {i < arr.length - 1 && (
-                      <div style={{ color: '#1a1a1a', fontSize: '7px', flexShrink: 0, padding: '0 1px' }}>{'\u2192'}</div>
+                      <div style={{ color: 'var(--syn-border)', fontSize: '7px', flexShrink: 0, padding: '0 1px' }}>{'\u2192'}</div>
                     )}
                   </React.Fragment>
                 ))}
@@ -189,7 +268,7 @@ const InputBar: React.FC<InputBarProps> = ({
               <div className="syn-section-header" style={{ marginBottom: '8px', letterSpacing: '1.5px' }}>
                 Sample verifications
               </div>
-              <div style={{ border: '1px solid #141414', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--syn-border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
                 {PRELOADED_EXAMPLES.map((ex, i) => {
                   const statusColor = ex.verdict === 'supported' ? '#4ade80'
                     : ex.verdict === 'contradicted' ? '#ef4444'
