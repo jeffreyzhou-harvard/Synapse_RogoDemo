@@ -236,6 +236,19 @@ export interface VerificationState {
   growthVerifications?: { claimed_growth_pct: number; actual_growth_pct: number; metric_key: string; period: string; comparison: { match_level: string; assessment: string } }[];
   stalenessFindings?: { id: string; evidence_id: string; source_type: string; issue: string; severity: string; description: string; recommendation: string }[];
   citationResults?: { id: string; source_cited: string; source_type: string; attributed_claim: string; key_value: string; verification_status: string; actual_value: string | null; discrepancy: string | null; assessment: string }[];
+  symbolicPredicates: SymbolicPredicate[];
+  symbolicRuleFireings: SymbolicRuleFiring[];
+  symbolicProofTree: SymbolicProofNode[];
+  symbolicConfidence?: SymbolicConfidence;
+  symbolicVerdictOverride?: {
+    should_override: boolean;
+    original_verdict: string;
+    new_verdict: string;
+    original_confidence: number;
+    new_confidence_score: number;
+    new_confidence_level: string;
+    reason: string;
+  };
   currentStep: string;
   stepLabel: string;
   completedSteps: string[];
@@ -275,4 +288,62 @@ export interface PipelineStats {
   durationMs: number;
 }
 
-export type TabId = 'subclaims' | 'evidence' | 'contradictions' | 'consistency' | 'plausibility' | 'provenance' | 'correction' | 'risk_signals';
+// ─── Neurosymbolic Reasoning Types ─────────────────────────────────
+
+export interface SymbolicPredicate {
+  id: string;
+  type: string;
+  subclaim_id: string;
+  args: Record<string, any>;
+  grounded: boolean;
+  grounding_evidence: string[];
+  grounding_value?: any;
+}
+
+export interface SymbolicRuleFiring {
+  rule_id: string;
+  rule_name: string;
+  description: string;
+  severity: 'info' | 'warning' | 'override';
+  inputs: string[];
+  conclusion: string;
+  suggested_verdict?: string;
+  confidence_delta: number;
+}
+
+export interface SymbolicProofNode {
+  id: string;
+  type: 'claim' | 'premise' | 'evidence' | 'rule' | 'inference' | 'verdict';
+  label: string;
+  detail: string;
+  status: string;
+  confidence: number;
+  children: string[];
+  evidence_ids: string[];
+  rule_id?: string;
+  predicate_id?: string;
+}
+
+export interface SymbolicConfidence {
+  bayesian_score: number;
+  bayesian_level: string;
+  claim_probability: number;
+  adjusted_probability: number;
+  rule_adjustment: number;
+  subclaim_probabilities: Record<string, number>;
+  evidence_reliabilities: Record<string, number>;
+  grounded_predicates: number;
+  total_predicates: number;
+  rules_fired: number;
+  override_rules: number;
+  symbolic_reliability: {
+    score: number;
+    level: string;
+    override_confidence: number;
+    factors: Record<string, number>;
+    reasons: string[];
+    can_override: boolean;
+  };
+}
+
+export type TabId = 'subclaims' | 'evidence' | 'contradictions' | 'consistency' | 'plausibility' | 'provenance' | 'correction' | 'risk_signals' | 'reasoning';

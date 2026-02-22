@@ -34,7 +34,7 @@ const SynapsePage: React.FC = () => {
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'contradictions' | 'consistency' | 'plausibility' | 'provenance' | 'correction' | 'risk_signals'>('subclaims');
+  const [activeTab, setActiveTab] = useState<'subclaims' | 'evidence' | 'contradictions' | 'consistency' | 'plausibility' | 'provenance' | 'correction' | 'risk_signals' | 'reasoning'>('subclaims');
   const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
   const [showTrace, setShowTrace] = useState(true);
   const [inputCollapsed, setInputCollapsed] = useState(false);
@@ -219,6 +219,7 @@ const SynapsePage: React.FC = () => {
 
     setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: 'verifying' as const, verification: {
       subclaims: [], evidence: [], contradictions: [], consistencyIssues: [], authorityConflicts: [], provenanceNodes: [], provenanceEdges: [],
+      symbolicPredicates: [], symbolicRuleFireings: [], symbolicProofTree: [],
       currentStep: '', stepLabel: '', completedSteps: [],
     }} : c));
 
@@ -252,7 +253,9 @@ const SynapsePage: React.FC = () => {
               if (c.id !== claimId) return c;
               const v: VerificationState = { ...(c.verification || {
                 subclaims: [], evidence: [], contradictions: [], consistencyIssues: [], authorityConflicts: [],
-                provenanceNodes: [], provenanceEdges: [], currentStep: '', stepLabel: '', completedSteps: [],
+                provenanceNodes: [], provenanceEdges: [],
+                symbolicPredicates: [], symbolicRuleFireings: [], symbolicProofTree: [],
+                currentStep: '', stepLabel: '', completedSteps: [],
               })};
 
               switch (type) {
@@ -296,6 +299,11 @@ const SynapsePage: React.FC = () => {
                 case 'growth_verification': v.growthVerifications = [...(v.growthVerifications || []), data]; break;
                 case 'staleness_finding': v.stalenessFindings = [...(v.stalenessFindings || []), data]; break;
                 case 'citation_verified': v.citationResults = [...(v.citationResults || []), data]; break;
+                case 'symbolic_predicate': v.symbolicPredicates = [...v.symbolicPredicates, data]; break;
+                case 'symbolic_rule_firing': v.symbolicRuleFireings = [...v.symbolicRuleFireings, data]; break;
+                case 'symbolic_proof_tree': v.symbolicProofTree = data.nodes || []; break;
+                case 'symbolic_confidence': v.symbolicConfidence = data; setActiveTab('reasoning'); break;
+                case 'symbolic_verdict_override': v.symbolicVerdictOverride = data; break;
                 case 'step_complete':
                   v.completedSteps = [...v.completedSteps, data.step];
                   v.totalDurationMs = data.duration_ms || data.total_duration_ms;
@@ -353,6 +361,11 @@ const SynapsePage: React.FC = () => {
               case 'growth_verification': { const gvMatch = data.comparison?.match_level; const gvIcon = gvMatch === 'significant' ? '🔴' : gvMatch === 'notable' ? '🟠' : '✅'; addTrace(`${gvIcon} Growth: claimed ${data.claimed_growth_pct}% vs actual ${data.actual_growth_pct}% (${data.metric_key})`, 'info', 1, 'filings'); break; }
               case 'staleness_finding': { const staleIcon = data.severity === 'high' ? '🟠' : '🟡'; addTrace(`${staleIcon} Stale: ${data.description?.slice(0, 100)}`, 'info', 1, 'filings'); break; }
               case 'citation_verified': { const citeIcon = data.verification_status === 'verified' ? '✅' : data.verification_status === 'contradicted' ? '🔴' : data.verification_status === 'imprecise' ? '🟠' : '⚪'; addTrace(`${citeIcon} Citation "${data.source_cited}": ${data.verification_status} — ${data.assessment?.slice(0, 80)}`, 'info', 1, 'reasoning'); break; }
+              case 'symbolic_predicate': addTrace(`🔣 ${data.type.toUpperCase()}(${Object.values(data.args || {}).slice(0, 3).join(', ')}) ${data.grounded ? '✓' : '?'}`, 'info', 1, 'reasoning'); break;
+              case 'symbolic_rule_firing': { const rfIcon = data.severity === 'override' ? '🔴' : data.severity === 'warning' ? '🟡' : '🟢'; addTrace(`${rfIcon} RULE ${data.rule_name}: ${data.conclusion?.slice(0, 80)}`, 'info', 1, 'reasoning'); break; }
+              case 'symbolic_proof_tree': addTrace(`🌳 Proof tree: ${(data.nodes || []).length} nodes`, 'info', 1, 'reasoning'); break;
+              case 'symbolic_confidence': addTrace(`🧮 Bayesian confidence: ${data.bayesian_score}/100 (${data.bayesian_level}) — ${data.grounded_predicates}/${data.total_predicates} grounded, ${data.rules_fired} rules`, 'verdict', 0, 'reasoning'); break;
+              case 'symbolic_verdict_override': { if (data.should_override) addTrace(`🔴 SYMBOLIC OVERRIDE: ${data.original_verdict.toUpperCase()} → ${data.new_verdict.toUpperCase()} (Bayesian: ${data.new_confidence_score}/100)`, 'verdict', 0, 'reasoning'); break; }
               case 'verification_complete': addTrace(`Done in ${(data.total_duration_ms / 1000).toFixed(1)}s — ${data.total_sources} sources`, 'success'); break;
             }
           } catch { /* skip malformed events */ }

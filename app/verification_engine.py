@@ -3372,23 +3372,28 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     # Parallelize per-subclaim verdict synthesis (each is an independent LLM call)
     def _synthesize_one(sc):
         sc_evidence = [e for e in all_evidence if e.get("subclaim_id") == sc["id"]]
-        verdict = synthesize_verdict(sc["text"], sc_evidence)
-        verdict["text"] = sc["text"]
-        verdict["subclaim_id"] = sc["id"]
-        return verdict
+        v = synthesize_verdict(sc["text"], sc_evidence)
+        v["text"] = sc["text"]
+        v["subclaim_id"] = sc["id"]
+        return v
 
+    from concurrent.futures import as_completed as _as_completed
+    subclaim_verdicts = []
     with _TPE(max_workers=min(4, len(subclaims) or 1)) as verdict_pool:
-        subclaim_verdicts = list(verdict_pool.map(_synthesize_one, subclaims))
-        yield VerificationEvent("subclaim_verdict", {
-            "subclaim_id": sc["id"],
-            "text": sc["text"],
-            "verdict": verdict.get("verdict", "unsupported"),
-            "confidence": verdict.get("confidence", "low"),
-            "confidence_score": verdict.get("confidence_score"),
-            "confidence_breakdown": verdict.get("confidence_breakdown"),
-            "summary": verdict.get("summary", ""),
-            "verified_against": verdict.get("verified_against"),
-        })
+        future_to_sc = {verdict_pool.submit(_synthesize_one, sc): sc for sc in subclaims}
+        for fut in _as_completed(future_to_sc):
+            sv = fut.result()
+            subclaim_verdicts.append(sv)
+            yield VerificationEvent("subclaim_verdict", {
+                "subclaim_id": sv["subclaim_id"],
+                "text": sv["text"],
+                "verdict": sv.get("verdict", "unsupported"),
+                "confidence": sv.get("confidence", "low"),
+                "confidence_score": sv.get("confidence_score"),
+                "confidence_breakdown": sv.get("confidence_breakdown"),
+                "summary": sv.get("summary", ""),
+                "verified_against": sv.get("verified_against"),
+            })
 
     overall = synthesize_overall_verdict(claim_text, subclaim_verdicts, all_evidence=all_evidence)
     # Reasoning: verdict synthesis rationale
@@ -3521,6 +3526,97 @@ def run_verification_pipeline(claim_text: str) -> Generator[VerificationEvent, N
     patterns = risk_signals.get("patterns_detected", [])
     yield VerificationEvent("agent_reasoning", {"agent": "risk_analyst", "stage": "risk_signals", "message": f"Risk level: {risk_level.upper()} — {red_count} red flag(s), {len(patterns)} pattern(s)", "detail": risk_signals.get("headline", "")[:200]})
     yield VerificationEvent("step_complete", {"step": "risk_signals", "duration_ms": int((time.time() - t0) * 1000)})
+
+    # --- Stage 12: Neurosymbolic Reasoning (deterministic — no LLM) ---
+    yield VerificationEvent("step_start", {"step": "symbolic_reasoning", "label": "Neurosymbolic reasoning..."})
+    try:
+        from app.symbolic_engine import run_symbolic_reasoning
+        symbolic = run_symbolic_reasoning(
+            claim_text=claim_text,
+            subclaims=subclaims,
+            subclaim_verdicts=subclaim_verdicts,
+            evidence_list=all_evidence,
+            contradictions=contradictions,
+            overall_verdict=overall,
+            entity_resolution=legacy_er,
+            normalization=normalization,
+            numerical_facts=fact_dicts,
+        )
+        sym_data = symbolic.to_dict()
+
+        # Emit predicates
+        for pred in sym_data["predicates"]:
+            yield VerificationEvent("symbolic_predicate", pred)
+
+        # Emit rule firings
+        for rf in sym_data["rule_firings"]:
+            yield VerificationEvent("symbolic_rule_firing", rf)
+
+        # Emit proof tree
+        yield VerificationEvent("symbolic_proof_tree", {"nodes": sym_data["proof_tree"]})
+
+        # Emit Bayesian confidence
+        yield VerificationEvent("symbolic_confidence", sym_data["confidence"])
+
+        # Reasoning message
+        n_pred = sym_data["confidence"].get("total_predicates", 0)
+        n_grounded = sym_data["confidence"].get("grounded_predicates", 0)
+        n_rules = sym_data["confidence"].get("rules_fired", 0)
+        n_overrides = sym_data["confidence"].get("override_rules", 0)
+        bay_score = sym_data["confidence"].get("bayesian_score", 0)
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "symbolic_engine",
+            "stage": "symbolic_reasoning",
+            "message": f"Parsed {n_pred} predicates ({n_grounded} grounded), fired {n_rules} rules ({n_overrides} overrides), Bayesian confidence: {bay_score}/100",
+            "detail": f"Formal proof tree constructed with {len(sym_data['proof_tree'])} nodes. "
+                       f"Symbolic confidence {'agrees with' if abs(bay_score - (overall.get('confidence_score', 0) or 0)) < 15 else 'diverges from'} neural confidence ({overall.get('confidence_score', '?')}/100).",
+        })
+
+        # Apply verdict override if symbolic reasoning demands it
+        verdict_override = sym_data.get("verdict_override")
+        if verdict_override and verdict_override.get("should_override"):
+            old_verdict = overall.get("verdict", "?")
+            new_verdict = verdict_override["new_verdict"]
+            overall["verdict"] = new_verdict
+            overall["confidence"] = verdict_override.get("new_confidence_level", "low")
+            overall["confidence_score"] = verdict_override.get("new_confidence_score", bay_score)
+            overall["symbolic_override"] = True
+            overall["symbolic_override_reason"] = verdict_override.get("reason", "")
+
+            yield VerificationEvent("symbolic_verdict_override", verdict_override)
+            yield VerificationEvent("agent_reasoning", {
+                "agent": "symbolic_engine",
+                "stage": "symbolic_reasoning",
+                "message": f"VERDICT OVERRIDE: {old_verdict.upper()} → {new_verdict.upper()} (Bayesian: {bay_score}/100)",
+                "detail": verdict_override.get("reason", ""),
+            })
+            # Re-emit the corrected overall verdict
+            yield VerificationEvent("overall_verdict", {
+                "verdict": overall.get("verdict", "unsupported"),
+                "confidence": overall.get("confidence", "low"),
+                "confidence_score": overall.get("confidence_score"),
+                "confidence_breakdown": overall.get("confidence_breakdown"),
+                "summary": verdict_override.get("reason", overall.get("summary", "")),
+                "detail": overall.get("detail", ""),
+                "symbolic_override": True,
+            })
+        elif verdict_override and not verdict_override.get("should_override"):
+            # Flag divergence without overriding
+            yield VerificationEvent("symbolic_verdict_override", verdict_override)
+            yield VerificationEvent("agent_reasoning", {
+                "agent": "symbolic_engine",
+                "stage": "symbolic_reasoning",
+                "message": f"DIVERGENCE FLAGGED: Neural {verdict_override.get('original_confidence', '?')}/100 vs Symbolic {bay_score}/100",
+                "detail": verdict_override.get("reason", ""),
+            })
+    except Exception as e:
+        yield VerificationEvent("agent_reasoning", {
+            "agent": "symbolic_engine",
+            "stage": "symbolic_reasoning",
+            "message": f"Symbolic reasoning encountered an error: {str(e)[:100]}",
+            "detail": "Falling back to neural-only verdict.",
+        })
+    yield VerificationEvent("step_complete", {"step": "symbolic_reasoning", "duration_ms": int((time.time() - t0) * 1000)})
 
     # --- Done ---
     total_ms = int((time.time() - t0) * 1000)

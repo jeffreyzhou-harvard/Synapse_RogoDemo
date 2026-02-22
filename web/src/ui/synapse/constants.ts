@@ -50,6 +50,7 @@ export const STEP_ICONS: Record<string, string> = {
   correction: '✏️',
   reconciliation: '⚖️',
   risk_signals: '🚨',
+  symbolic_reasoning: '🧠',
 };
 
 // ─── Agent Brand Colors ──────────────────────────────────────────────────
@@ -78,6 +79,7 @@ export const AGENT_COLORS: Record<string, string> = {
   provenance_tracer: '#6a9f9c',
   reconciler: '#6fad8e',
   risk_analyst: '#c47070',
+  symbolic_engine: '#a78bfa',
 };
 
 // ─── Initial Pipeline Chips ──────────────────────────────────────────────
@@ -95,6 +97,7 @@ export const INITIAL_PIPELINE: Omit<AgentChip, 'status'>[] = [
   { id: 'synthesize',    service: 'reasoning',  task: 'Synthesize',     label: 'Verdict Synthesis',             color: '#b0a088' },
   { id: 'provenance',    service: 'search',     task: 'Provenance',     label: 'Provenance Tracing',            color: '#6a9f9c' },
   { id: 'correct',       service: 'reasoning',  task: 'Correct',        label: 'Claim Correction',              color: '#b0a088' },
+  { id: 'symbolic',      service: 'reasoning',  task: 'Symbolic',       label: 'Neurosymbolic Reasoning',       color: '#a78bfa' },
 ];
 
 // ─── Step → Chip Mappings ────────────────────────────────────────────────
@@ -115,6 +118,7 @@ export const STEP_TO_CHIP: Record<string, string> = {
   correction: 'correct',
   reconciliation: 'correct',
   risk_signals: 'synthesize',
+  symbolic_reasoning: 'symbolic',
 };
 
 export const STEP_COMPLETE_CHIPS: Record<string, string[]> = {
@@ -134,6 +138,7 @@ export const STEP_COMPLETE_CHIPS: Record<string, string[]> = {
   correction: ['correct'],
   reconciliation: ['correct'],
   risk_signals: ['synthesize'],
+  symbolic_reasoning: ['symbolic'],
   evidence_retrieval: ['edgar', 'sonar_web'],
 };
 
