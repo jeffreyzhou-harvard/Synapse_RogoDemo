@@ -49,6 +49,9 @@ class IngestResponse(BaseModel):
     text: str
     source_type: str  # url, text, audio, sec_filing, earnings_transcript, financial_document
     url: Optional[str] = None
+    ingest_method: Optional[str] = None
+    url_canonical: Optional[str] = None
+    content_quality: Optional[dict] = None
 
 class ExtractClaimsRequest(BaseModel):
     text: str
@@ -175,25 +178,78 @@ def api_export_audit_log(req: AuditLogRequest):
 @router.post("/ingest", response_model=IngestResponse)
 def api_ingest(req: IngestRequest):
     """Ingest content from URL or raw text. Returns clean extracted text."""
+    import time as _time
+    import logging
+    from app.url_utils import canonicalize_url
+    from app.ingest_cache import get_cached_ingest, set_cached_ingest
+    from app.content_extractor import compute_text_hash
+
+    log = logging.getLogger("synapse.ingest")
+
     if req.url:
-        # Detect SEC filing URLs
+        t0 = _time.time()
         source_type = "url"
         if "sec.gov" in req.url.lower():
             source_type = "sec_filing"
         elif any(kw in req.url.lower() for kw in ["earnings", "transcript"]):
             source_type = "earnings_transcript"
 
+        url_canon = canonicalize_url(req.url)
+
+        cached = get_cached_ingest(url_canon, source_type)
+        if cached:
+            log.info("ingest url_canonical=%s ingest_method=cache cache_hit=True time_ms=%.0f",
+                     url_canon, (_time.time() - t0) * 1000)
+            return IngestResponse(
+                title=cached["title"],
+                text=cached["text"],
+                source_type=cached["source_type"],
+                url=req.url,
+                ingest_method="cache",
+                url_canonical=url_canon,
+                content_quality=cached.get("content_quality"),
+            )
+
         result = extract_url_content(req.url)
         if result.get("error"):
             raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {result['error']}")
+
+        ingest_method = result.get("ingest_method", "direct_main")
+        quality = result.get("content_quality")
+        text = result.get("text", "")
+        title = result.get("title", req.url)
+
+        set_cached_ingest(
+            url_canonical=url_canon,
+            title=title,
+            text=text,
+            source_type=source_type,
+            ingest_method=ingest_method,
+            text_hash=compute_text_hash(text),
+            quality=quality,
+        )
+
+        elapsed = (_time.time() - t0) * 1000
+        log.info(
+            "ingest url_canonical=%s ingest_method=%s cache_hit=False "
+            "extractor=%s chars=%d numeric_density=%.2f time_ms=%.0f",
+            url_canon, ingest_method,
+            (quality or {}).get("extractor_used", "unknown"),
+            len(text),
+            (quality or {}).get("numeric_density", 0),
+            elapsed,
+        )
+
         return IngestResponse(
-            title=result.get("title", req.url),
-            text=result.get("text", ""),
+            title=title,
+            text=text,
             source_type=source_type,
             url=req.url,
+            ingest_method=ingest_method,
+            url_canonical=url_canon,
+            content_quality=quality,
         )
     elif req.text:
-        # Direct text paste — just pass through
         title = req.text[:60].strip().replace("\n", " ")
         return IngestResponse(title=title, text=req.text, source_type="text")
     else:

@@ -1219,35 +1219,106 @@ def _strip_html(raw_html: str) -> tuple:
     return title, clean
 
 def _fetch_via_sonar(url: str) -> Dict[str, str]:
-    """Use Perplexity Sonar to read and summarize a URL's content."""
+    """Use Perplexity Sonar to get bounded quoted excerpts + metadata.
+
+    Does NOT reproduce full article — returns structured JSON with max 10
+    quoted excerpts around verifiable numeric assertions.
+    """
     api_key = os.getenv("PERPLEXITY_API_KEY")
     if not api_key:
         return {"title": url, "text": "", "url": url, "error": "No Perplexity key for fallback"}
     try:
         print(f"[URL Extract] Direct scrape failed/blocked — falling back to Sonar for {url}")
+        system_prompt = (
+            "You are a metadata and excerpt extraction assistant. "
+            "Given a URL, return ONLY a valid JSON object with these fields:\n"
+            '{\n'
+            '  "title": "article title",\n'
+            '  "publisher": "publisher or site name",\n'
+            '  "published_at": "YYYY-MM-DD or null",\n'
+            '  "excerpts": [\n'
+            '    {"quote": "exact quoted passage <= 350 chars", "reason": "why relevant", "approx_location": "beginning/middle/end"}\n'
+            '  ],\n'
+            '  "notes": "paywall/botwall/etc or empty"\n'
+            '}\n'
+            "Rules:\n"
+            "- Max 10 excerpts\n"
+            "- Each quote MUST be <= 350 characters\n"
+            "- Focus on excerpts containing numeric claims, statistics, financial data, percentages\n"
+            "- Do NOT reproduce the full article\n"
+            "- Return ONLY the JSON, no markdown fences"
+        )
         resp = httpx.post(
             "https://api.perplexity.ai/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": "sonar",
                 "messages": [
-                    {"role": "system", "content": "You are a content extraction assistant. Read the given URL and reproduce its full article content as faithfully as possible. Include all factual claims, statistics, quotes, and key arguments. Do NOT summarize — reproduce the content."},
-                    {"role": "user", "content": f"Read this URL and reproduce its full article content:\n{url}"},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Extract metadata and key numeric excerpts from this URL:\n{url}"},
                 ],
             },
             timeout=30,
         )
         if resp.status_code == 200:
             data = resp.json()
-            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if text and len(text.split()) > 30:
-                # Derive title from first line or sentence
-                first_line = text.split('\n')[0].strip().strip('#').strip()
-                title = first_line[:120] if len(first_line) > 5 else url
-                return {"title": title, "text": text, "url": url}
+            raw_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = _parse_sonar_excerpts(raw_text, url)
+            if parsed:
+                return parsed
     except Exception as e:
         print(f"[URL Extract Sonar Fallback] Error: {e}")
     return {"title": url, "text": "", "url": url, "error": "Sonar fallback also failed"}
+
+
+def _parse_sonar_excerpts(raw: str, url: str) -> Optional[Dict[str, str]]:
+    """Parse Sonar excerpt JSON and compose readable ingest text."""
+    try:
+        import json as _json
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = re.sub(r"^```\w*\n?", "", clean)
+            clean = re.sub(r"\n?```$", "", clean)
+        obj = _json.loads(clean)
+
+        title = obj.get("title", url) or url
+        publisher = obj.get("publisher", "")
+        pub_date = obj.get("published_at", "")
+        excerpts = obj.get("excerpts", [])
+        notes = obj.get("notes", "")
+
+        header_parts = [title]
+        if publisher:
+            header_parts.append(f"Publisher: {publisher}")
+        if pub_date:
+            header_parts.append(f"Published: {pub_date}")
+        if notes:
+            header_parts.append(f"Note: {notes}")
+
+        lines = ["\n".join(header_parts), ""]
+        for i, ex in enumerate(excerpts[:10], 1):
+            quote = ex.get("quote", "")[:350]
+            reason = ex.get("reason", "")
+            loc = ex.get("approx_location", "")
+            lines.append(f'[Excerpt {i}] "{quote}"')
+            if reason:
+                lines.append(f"  Reason: {reason}")
+            if loc:
+                lines.append(f"  Location: {loc}")
+            lines.append("")
+
+        composed = "\n".join(lines).strip()
+        if len(composed.split()) < 10:
+            return None
+
+        return {
+            "title": title,
+            "text": composed,
+            "url": url,
+            "ingest_method": "sonar_excerpts",
+        }
+    except Exception:
+        return None
 
 def _is_tweet_url(url: str) -> bool:
     """Check if URL is a Twitter/X tweet."""
@@ -1336,8 +1407,14 @@ def _extract_tweet(url: str) -> Dict[str, str]:
     return {"title": url, "text": "", "url": url, "source_type": "tweet", "error": "Failed to extract tweet"}
 
 def extract_url_content(url: str) -> Dict[str, str]:
-    """Fetch and extract clean text from a URL. Falls back to Sonar if blocked."""
-    # Detect tweet URLs and use specialized extraction
+    """Fetch and extract clean text from a URL.
+
+    Uses trafilatura for main-content extraction (much cleaner than regex
+    tag stripping) with raw BS-free fallback. Falls back to Sonar excerpts
+    if the page is a bot wall or returns too little content.
+    """
+    from app.content_extractor import extract_main_content, is_bot_wall
+
     if _is_tweet_url(url):
         return _extract_tweet(url)
     try:
@@ -1347,19 +1424,29 @@ def extract_url_content(url: str) -> Dict[str, str]:
             "Accept-Language": "en-US,en;q=0.9",
         }
         resp = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
-        title, text = _strip_html(resp.text)
-        title = title or url
+        html = resp.text
 
-        # Check for bot walls or garbage content
-        if _is_bot_wall(text) or len(text.split()) < 50:
-            print(f"[URL Extract] Bot wall or too short ({len(text.split())} words) — trying Sonar")
-            return _fetch_via_sonar(url)
+        extracted = extract_main_content(html, url=url)
+        title = extracted["title"] or url
+        text = extracted["text"]
+        quality = extracted["quality"]
+        extractor = extracted["extractor_used"]
+        method = f"direct_{extractor}"
 
-        # Limit to first ~5000 words
-        words = text.split()
-        text = ' '.join(words[:5000])
+        if is_bot_wall(text, quality) or len(text.split()) < 50:
+            print(f"[URL Extract] Bot wall or too short ({len(text.split())} words, "
+                  f"extractor={extractor}) — trying Sonar")
+            sonar_result = _fetch_via_sonar(url)
+            sonar_result["content_quality"] = quality
+            return sonar_result
 
-        return {"title": title, "text": text, "url": url}
+        return {
+            "title": title,
+            "text": text,
+            "url": url,
+            "ingest_method": method,
+            "content_quality": quality,
+        }
     except Exception as e:
         print(f"[URL Extract] Direct fetch error: {e} — trying Sonar")
         return _fetch_via_sonar(url)

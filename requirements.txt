@@ -12,3 +12,4 @@ httpx>=0.21
 pymupdf>=1.24
 python-pptx>=1.0
 python-docx>=1.1
+trafilatura>=2.0
