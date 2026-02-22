@@ -191,8 +191,8 @@ const InputBar: React.FC<InputBarProps> = ({
               </div>
               <div style={{ border: '1px solid #141414', borderRadius: '2px', overflow: 'hidden' }}>
                 {PRELOADED_EXAMPLES.map((ex, i) => {
-                  const statusColor = ex.verdict === 'supported' ? '#4ade80'
-                    : ex.verdict === 'contradicted' ? '#ef4444'
+                  const statusColor = ex.verdict === 'supported' ? '#6fad8e'
+                    : ex.verdict === 'contradicted' ? '#c47070'
                     : ex.verdict === 'mixed' ? '#888' : '#666';
                   return (
                     <button key={i} onClick={() => { setInputMode('text'); setInputValue(ex.claim); }}

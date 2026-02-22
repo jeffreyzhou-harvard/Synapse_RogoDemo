@@ -24,11 +24,11 @@ interface ClaimsListProps {
 }
 
 const CLAIM_TYPE_CONFIG: Record<string, { color: string; label: string }> = {
-  financial_metric: { color: '#4ade80', label: 'Metric' },
-  valuation:        { color: '#a78bfa', label: 'Valuation' },
-  transaction:      { color: '#6b9bd2', label: 'Transaction' },
-  regulatory:       { color: '#d4af37', label: 'Regulatory' },
-  guidance:         { color: '#fbbf24', label: 'Guidance' },
+  financial_metric: { color: '#6fad8e', label: 'Metric' },
+  valuation:        { color: '#8a7ab5', label: 'Valuation' },
+  transaction:      { color: '#7090aa', label: 'Transaction' },
+  regulatory:       { color: '#a89050', label: 'Regulatory' },
+  guidance:         { color: '#b09555', label: 'Guidance' },
 };
 
 const ClaimsList: React.FC<ClaimsListProps> = ({
@@ -170,7 +170,7 @@ const ClaimsList: React.FC<ClaimsListProps> = ({
                 <div style={{ fontSize: '9px', color: '#555', marginTop: '4px' }}>Click to verify</div>
               )}
               {claim.status === 'error' && (
-                <div style={{ fontSize: '9px', color: '#f87171', marginTop: '4px' }}>
+                <div style={{ fontSize: '9px', color: '#c47070', marginTop: '4px' }}>
                   Verification failed — click to retry
                 </div>
               )}

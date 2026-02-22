@@ -16,8 +16,8 @@ interface TraceFeedProps {
 
 const TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
   step:    { color: '#ffffff', icon: '▸' },
-  success: { color: '#4ade80', icon: '✓' },
-  error:   { color: '#f87171', icon: '✗' },
+  success: { color: '#6fad8e', icon: '✓' },
+  error:   { color: '#c47070', icon: '✗' },
   verdict: { color: '#cccccc', icon: '◆' },
   info:    { color: '#666666', icon: '·' },
 };
